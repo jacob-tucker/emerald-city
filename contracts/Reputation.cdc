@@ -14,7 +14,6 @@ pub contract Reputation {
 
     pub resource interface IdentityGovernor {
         access(contract) fun addSkill(skill: String, amount: UFix64)
-        access(contract) fun removeSkill(skill: String, amount: UFix64)
     }
 
     pub resource Identity: IdentityPublic, IdentityGovernor {
@@ -25,14 +24,6 @@ pub contract Reputation {
                 self.skills[skill] = reputation + amount
             } else {
                 self.skills[skill] = amount
-            }
-        }
-
-        access(contract) fun removeSkill(skill: String, amount: UFix64) {
-            if let reputation = self.skills[skill] {
-                self.skills[skill] = reputation - amount
-            } else {
-                self.skills[skill] = 0.0
             }
         }
 
@@ -50,7 +41,7 @@ pub contract Reputation {
     }
 
     pub resource Governor {
-        pub fun createskill(skill: String) {
+        pub fun createSkill(skill: String) {
             pre {
                 Reputation.skillTotals[skill] == nil:
                     "This reputation type already exists."
@@ -64,6 +55,7 @@ pub contract Reputation {
                     "This is not a valid reputation type."
             }
             identity.addSkill(skill: skill, amount: amount)
+            Reputation.skillTotals[skill] = Reputation.skillTotals[skill]! + amount
             emit ReputationAdded(skill: skill, by: self.owner!.address, to: identity.owner!.address, amount: amount)
         }
     }
