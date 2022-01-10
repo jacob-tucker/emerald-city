@@ -8,10 +8,12 @@ pub contract Reputation {
     // Maps a skill to the total amount of that skill that exists
     access(contract) var skillTotals: {String: UFix64}
 
+    // For the public to be able to read your reputation
     pub resource interface IdentityPublic {
-        pub fun getReputations(): {String: UFix64}
+        pub fun getReputation(): {String: UFix64}
     }
 
+    // For the governor to be able to add skill to your identity
     pub resource interface IdentityGovernor {
         access(contract) fun addSkill(skill: String, amount: UFix64)
     }
@@ -27,7 +29,7 @@ pub contract Reputation {
             }
         }
 
-        pub fun getReputations(): {String: UFix64} {
+        pub fun getReputation(): {String: UFix64} {
             return self.skills
         }
 
@@ -49,7 +51,7 @@ pub contract Reputation {
             Reputation.skillTotals[skill] = 0.0
         }
 
-        pub fun giveReputation(skill: String, amount: UFix64, identity: &Identity{IdentityGovernor}) {
+        pub fun giveSkill(skill: String, amount: UFix64, identity: &Identity{IdentityGovernor}) {
             pre {
                 Reputation.skillTotals[skill] != nil: 
                     "This is not a valid reputation type."
