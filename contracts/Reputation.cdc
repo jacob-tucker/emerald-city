@@ -11,19 +11,25 @@ pub contract Reputation {
     pub var IdentityPublicPath: PublicPath
     pub var LeaderStoragePath: StoragePath
 
+    // The information about a season
     pub struct SeasonInfo {
-        pub let seasonNumber: UInt64
-        pub let seasonStart: UFix64
-        pub var seasonEnd: UFix64
+        pub let number: UInt64
+        pub let start: UFix64
+        pub var end: UFix64
 
         init(_seasonDuration: UFix64) {
-            self.seasonNumber = Reputation.seasonInfo!.seasonNumber + 1
-            self.seasonStart = getCurrentBlock().timestamp
-            self.seasonEnd = self.seasonStart + _seasonDuration
+            if let currentSeason = Reputation.currentSeason() {
+                self.number = currentSeason + 1
+            } else {
+                self.number = 0
+            }
+            self.start = getCurrentBlock().timestamp
+            self.end = self.start + _seasonDuration
         }
     }
 
-    // The information for the current season
+    // The information for the current season.
+    // Will only be nil before season 0 starts.
     pub var seasonInfo: SeasonInfo?
 
     // Maps a skill to the total amount of that skill that exists
@@ -32,9 +38,29 @@ pub contract Reputation {
     // Building --> 60.0
     access(contract) var skillTotals: {String: UFix64}
 
+    // A container for the skill points a user gets during a certain season.
+    // Mainly used inside the user's `Identity`.
+    pub struct Skills {
+        pub let season: UInt64
+        pub let skillPoints: {String: UFix64}
+
+        pub fun addSkillPoints(skill: String, amount: UFix64) {
+            self.skillPoints[skill] = self.skillPoints[skill]! + amount
+        }
+        
+        init() {
+            self.season = Reputation.seasonInfo!.number
+            self.skillPoints = {}
+            
+            for skill in Reputation.skillTotals.keys {
+                self.skillPoints[skill] = 0.0
+            }
+        }
+    }
+
     // For the public to be able to read your reputation
     pub resource interface IdentityPublic {
-        pub fun getReputation(): {String: UFix64}
+        pub fun getReputation(): {UInt64: Skills}
     }
 
     // For the Leader to be able to add skill to your identity
@@ -43,21 +69,22 @@ pub contract Reputation {
     }
 
     pub resource Identity: IdentityPublic, IdentityLeader {
-        // Maps a skill to the individuals skill points
+        // Maps a season # to the Skills this identity has for that season
         //
-        // Education --> 10.0
-        // Building --> 5.0
-        access(contract) var skills: {String: UFix64}
+        // 0 --> Skills (educational == 50.0, building == 100.0, etc)
+        // 1 --> Skills (educational == 20.0, building == 80.0, etc)
+        access(contract) var skills: {UInt64: Skills}
 
         access(contract) fun addSkill(skill: String, amount: UFix64) {
-            if let reputation = self.skills[skill] {
-                self.skills[skill] = reputation + amount
-            } else {
-                self.skills[skill] = amount
+            if self.skills[Reputation.currentSeason()!] == nil {
+                self.skills[Reputation.currentSeason()!] = Skills()
             }
+
+            let skillsRef = &self.skills[Reputation.currentSeason()!] as &Skills
+            skillsRef.addSkillPoints(skill: skill, amount: amount)
         }
 
-        pub fun getReputation(): {String: UFix64} {
+        pub fun getReputation(): {UInt64: Skills} {
             return self.skills
         }
 
@@ -95,7 +122,7 @@ pub contract Reputation {
     pub resource Administrator {
         pub fun startSeason(seasonDuration: UFix64) {
             pre {   
-                Reputation.seasonInfo == nil || Reputation.seasonInfo!.seasonEnd >= getCurrentBlock().timestamp:
+                Reputation.seasonInfo == nil || Reputation.seasonInfo!.end >= getCurrentBlock().timestamp:
                     "This season has not ended yet."
             }   
             Reputation.seasonInfo = SeasonInfo(_seasonDuration: seasonDuration)
@@ -108,6 +135,10 @@ pub contract Reputation {
             }
             Reputation.skillTotals[skill] = 0.0
         }
+    }
+
+    pub fun currentSeason(): UInt64? {
+        return Reputation.seasonInfo?.number
     }
 
     init() {
