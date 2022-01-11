@@ -1,4 +1,4 @@
-import Time from "./Time.cdc"
+import Time from "../contracts/Time.cdc"
 
 pub contract DAOReputation {
 

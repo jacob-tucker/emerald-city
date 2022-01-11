@@ -5,6 +5,7 @@ pub contract Reputation {
     // Events
     pub event ReputationAdded(skill: String, by: Address, to: Address, amount: UFix64)
     pub event ReputationRemoved(skill: String, by: Address, to: Address, amount: UFix64)
+    pub event NewSeason(number: UInt64, start: UFix64, end: UFix64)
 
     // Paths
     pub var IdentityStoragePath: StoragePath
@@ -25,6 +26,8 @@ pub contract Reputation {
             }
             self.start = getCurrentBlock().timestamp
             self.end = self.start + _seasonDuration
+
+            emit NewSeason(number: self.number, start: self.start, end: self.end)
         }
     }
 
