@@ -3,10 +3,16 @@ import NonFungibleToken from 0x03
 
 pub contract POAP: NonFungibleToken {
 
+    // Paths
+    //
+    pub let POAPCollectionStoragePath: StoragePath
+    pub let POAPCollectionPublicPath: PublicPath
+    pub let POAPEventsStoragePath: StoragePath
+    pub let POAPEventsPublicPath: PublicPath
+
     pub var totalSupply: UInt64
 
     pub event ContractInitialized()
-
     // Throw away for standard
     pub event Withdraw(id: UInt64, from: Address?)
     pub event Deposit(id: UInt64, to: Address?)
@@ -153,7 +159,7 @@ pub contract POAP: NonFungibleToken {
         return <- create POAPEvents()
     }
 
-    pub fun mint(poapEvents: &POAPEvents{POAPEventsPublic}, name: String, nftCollection: &Collection{NonFungibleToken.Receiver}) {
+    pub fun mint(poapEvents: &POAPEvents{POAPEventsPublic}, name: String, nftCollection: &Collection) {
         pre {
             poapEvents.getEvent(name: name).active: "This POAP is not active."
         }
@@ -171,5 +177,10 @@ pub contract POAP: NonFungibleToken {
     init() {
         self.totalSupply = 0
         emit ContractInitialized()
+
+        self.POAPCollectionStoragePath = /storage/POAPCollectionStoragePath
+        self.POAPCollectionPublicPath = /public/POAPCollectionPublicPath
+        self.POAPEventsStoragePath = /storage/POAPEventsStoragePath
+        self.POAPEventsPublicPath = /public/POAPEventsPublicPath
     }
 }
