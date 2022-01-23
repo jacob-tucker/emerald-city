@@ -1,20 +1,20 @@
-import POAP from 0x01
+import FLOAT from 0x01
 
 transaction(name: String, host: Address) {
  
-  let POAPEvents: &POAP.POAPEvents{POAP.POAPEventsPublic}
-  let Collection: &POAP.Collection
+  let FLOATEvents: &FLOAT.FLOATEvents{FLOAT.FLOATEventsPublic}
+  let Collection: &FLOAT.Collection
 
   prepare(acct: AuthAccount) {
-    self.POAPEvents = getAccount(host).getCapability(POAP.POAPEventsPublicPath)
-                        .borrow<&POAP.POAPEvents{POAP.POAPEventsPublic}>()
-                        ?? panic("Could not borrow the public POAPEvents from the host.")
-    self.Collection = acct.borrow<&POAP.Collection>(from: POAP.POAPCollectionStoragePath)
+    self.FLOATEvents = getAccount(host).getCapability(FLOAT.FLOATEventsPublicPath)
+                        .borrow<&FLOAT.FLOATEvents{FLOAT.FLOATEventsPublic}>()
+                        ?? panic("Could not borrow the public FLOATEvents from the host.")
+    self.Collection = acct.borrow<&FLOAT.Collection>(from: FLOAT.FLOATCollectionStoragePath)
                         ?? panic("Could not get the Collection from the signer.")
   }
 
   execute {
-    POAP.mint(poapEvents: self.POAPEvents, name: name, nftCollection: self.Collection)
-    log("Claimed the POAP.")
+    FLOAT.mint(FLOATEvents: self.FLOATEvents, name: name, nftCollection: self.Collection)
+    log("Claimed the FLOAT.")
   }
 }

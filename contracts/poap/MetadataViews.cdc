@@ -30,7 +30,7 @@ pub contract MetadataViews {
         pub fun getIDs(): [UInt64]
     }
 
-    pub struct POAPMetadataView {
+    pub struct FLOATMetadataView {
         pub let recipient: Address
         pub let host: Address
         pub let name: String 

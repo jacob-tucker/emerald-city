@@ -1,14 +1,14 @@
 import MetadataViews from 0x02
 import NonFungibleToken from 0x03
 
-pub contract POAP: NonFungibleToken {
+pub contract FLOAT: NonFungibleToken {
 
     // Paths
     //
-    pub let POAPCollectionStoragePath: StoragePath
-    pub let POAPCollectionPublicPath: PublicPath
-    pub let POAPEventsStoragePath: StoragePath
-    pub let POAPEventsPublicPath: PublicPath
+    pub let FLOATCollectionStoragePath: StoragePath
+    pub let FLOATCollectionPublicPath: PublicPath
+    pub let FLOATEventsStoragePath: StoragePath
+    pub let FLOATEventsPublicPath: PublicPath
 
     pub var totalSupply: UInt64
 
@@ -23,18 +23,18 @@ pub contract POAP: NonFungibleToken {
 
     pub resource NFT: NonFungibleToken.INFT, MetadataViews.Resolver {
         pub let id: UInt64
-        pub let info: MetadataViews.POAPMetadataView
+        pub let info: MetadataViews.FLOATMetadataView
 
         pub fun getViews(): [Type] {
              return [
-                Type<MetadataViews.POAPMetadataView>(),
+                Type<MetadataViews.FLOATMetadataView>(),
                 Type<MetadataViews.Identifier>()
             ]
         }
 
         pub fun resolveView(_ view: Type): AnyStruct? {
             switch view {
-                case Type<MetadataViews.POAPMetadataView>():
+                case Type<MetadataViews.FLOATMetadataView>():
                     return self.info
                 case Type<MetadataViews.Identifier>():
                     return MetadataViews.Identifier(id: self.id, address: self.owner!.address) 
@@ -45,12 +45,12 @@ pub contract POAP: NonFungibleToken {
 
         init(_recipient: Address, _host: Address, _name: String, _description: String, _image: String) {
             self.id = self.uuid
-            self.info = MetadataViews.POAPMetadataView(_recipient: _recipient, _host: _host, _name: _name, _description: _description, _image: _image)
+            self.info = MetadataViews.FLOATMetadataView(_recipient: _recipient, _host: _host, _name: _name, _description: _description, _image: _image)
 
             let dateReceived = 0.0 // getCurrentBlock().timestamp
             emit NFTMinted(recipient: _recipient, name: _name, description: _description, dateReceived: dateReceived, image: _image)
 
-            POAP.totalSupply = POAP.totalSupply + 1
+            FLOAT.totalSupply = FLOAT.totalSupply + 1
         }
     }
 
@@ -93,7 +93,7 @@ pub contract POAP: NonFungibleToken {
         }
     }
 
-    pub struct POAPEvent {
+    pub struct FLOATEvent {
         pub let name: String
         pub let description: String 
         pub let image: String 
@@ -120,29 +120,29 @@ pub contract POAP: NonFungibleToken {
         }
     }
 
-    pub resource interface POAPEventsPublic {
-        pub fun getEvent(name: String): POAPEvent
+    pub resource interface FLOATEventsPublic {
+        pub fun getEvent(name: String): FLOATEvent
     }
 
-    pub resource POAPEvents: POAPEventsPublic {
-        pub var events: {String: POAPEvent}
+    pub resource FLOATEvents: FLOATEventsPublic {
+        pub var events: {String: FLOATEvent}
 
         pub fun createEvent(name: String, description: String, image: String, timePeriod: UFix64?) {
             pre {
                 self.events[name] == nil: "An event with this name already exists in your Collection."
             }
-            self.events[name] = POAPEvent(_name: name, _description: description, _image: image, _timePeriod: timePeriod)
+            self.events[name] = FLOATEvent(_name: name, _description: description, _image: image, _timePeriod: timePeriod)
         }
 
         pub fun endEvent(name: String) {
             pre {
                 self.events[name] != nil: "This event does not exist in your Collection."
             }
-            let eventRef = &self.events[name] as &POAPEvent
+            let eventRef = &self.events[name] as &FLOATEvent
             eventRef.active = false
         }
 
-        pub fun getEvent(name: String): POAPEvent {
+        pub fun getEvent(name: String): FLOATEvent {
             return self.events[name] ?? panic("This event does not exist in this Collection.")
         }
 
@@ -155,21 +155,21 @@ pub contract POAP: NonFungibleToken {
         return <- create Collection()
     }
 
-    pub fun createEmptyPOAPEventCollection(): @POAPEvents {
-        return <- create POAPEvents()
+    pub fun createEmptyFLOATEventCollection(): @FLOATEvents {
+        return <- create FLOATEvents()
     }
 
-    pub fun mint(poapEvents: &POAPEvents{POAPEventsPublic}, name: String, nftCollection: &Collection) {
+    pub fun mint(FLOATEvents: &FLOATEvents{FLOATEventsPublic}, name: String, nftCollection: &Collection) {
         pre {
-            poapEvents.getEvent(name: name).active: "This POAP is not active."
+            FLOATEvents.getEvent(name: name).active: "This FLOAT is not active."
         }
-        let poapEvent = poapEvents.getEvent(name: name)
+        let FLOATEvent = FLOATEvents.getEvent(name: name)
         let token <- create NFT(
                                 _recipient: nftCollection.owner!.address, 
-                                _host: poapEvents.owner!.address, 
-                                _name: poapEvent.name, 
-                                _description: poapEvent.description, 
-                                _image: poapEvent.image
+                                _host: FLOATEvents.owner!.address, 
+                                _name: FLOATEvent.name, 
+                                _description: FLOATEvent.description, 
+                                _image: FLOATEvent.image
                                ) 
         nftCollection.deposit(token: <- token)
     }
@@ -178,9 +178,9 @@ pub contract POAP: NonFungibleToken {
         self.totalSupply = 0
         emit ContractInitialized()
 
-        self.POAPCollectionStoragePath = /storage/POAPCollectionStoragePath
-        self.POAPCollectionPublicPath = /public/POAPCollectionPublicPath
-        self.POAPEventsStoragePath = /storage/POAPEventsStoragePath
-        self.POAPEventsPublicPath = /public/POAPEventsPublicPath
+        self.FLOATCollectionStoragePath = /storage/FLOATCollectionStoragePath
+        self.FLOATCollectionPublicPath = /public/FLOATCollectionPublicPath
+        self.FLOATEventsStoragePath = /storage/FLOATEventsStoragePath
+        self.FLOATEventsPublicPath = /public/FLOATEventsPublicPath
     }
 }
