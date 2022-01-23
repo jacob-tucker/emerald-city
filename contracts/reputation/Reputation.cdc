@@ -63,6 +63,8 @@ pub contract Reputation {
         access(contract) fun addSkill(skill: String, amount: UFix64)
     }
 
+    // For the Administrator to be able to add Leader resources
+    // to your identity
     pub resource interface IdentityAdministrator {
         access(contract) fun addLeader(leader: @Leader)
     }
@@ -75,6 +77,8 @@ pub contract Reputation {
         access(contract) var skills: {UInt64: Skills}
 
         // The Identity may have leaders for a certain season
+        //
+        // Season 0 --> Leader
         access(self) var leaders: @{UInt64: Leader}
 
         access(contract) fun addSkill(skill: String, amount: UFix64) {
