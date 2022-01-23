@@ -57,4 +57,49 @@ pub contract MetadataViews {
             self.address = _address
         }
     }
+
+    // Display is a basic view that includes the name, description and
+    // thumbnail for an object. Most objects should implement this view.
+    //
+    pub struct Display {
+
+        // The name of the object. 
+        //
+        // This field will be displayed in lists and therefore should
+        // be short an concise.
+        //
+        pub let name: String
+
+        // A written description of the object. 
+        //
+        // This field will be displayed in a detailed view of the object,
+        // so can be more verbose (e.g. a paragraph instead of a single line).
+        //
+        pub let description: String
+
+        // A small thumbnail representation of the object.
+        //
+        // This field should be a web-friendly file (i.e JPEG, PNG)
+        // that can be displayed in lists, link previews, etc.
+        //
+        pub let thumbnail: AnyStruct{File}
+
+        init(
+            name: String,
+            description: String,
+            thumbnail: AnyStruct{File}
+        ) {
+            self.name = name
+            self.description = description
+            self.thumbnail = thumbnail
+        }
+    }
+
+    // File is a generic interface that represents a file stored on or off chain.
+    //
+    // Files can be used to references images, videos and other media.
+    //
+    pub struct interface File {
+        pub fun uri(): String
+    }
 }

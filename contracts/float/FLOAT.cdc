@@ -17,7 +17,7 @@ pub contract FLOAT: NonFungibleToken {
     pub event Withdraw(id: UInt64, from: Address?)
     pub event Deposit(id: UInt64, to: Address?)
 
-    pub event NFTMinted(recipient: Address, name: String, description: String, dateReceived: UFix64, image: String)
+    pub event NFTMinted(recipient: Address, host: Address, name: String, description: String, image: String)
     pub event NFTDeposited(to: Address, host: Address, name: String, id: UInt64)
     pub event NFTWithdrawn(from: Address, host: Address, name: String, id: UInt64)
 
@@ -48,7 +48,7 @@ pub contract FLOAT: NonFungibleToken {
             self.info = MetadataViews.FLOATMetadataView(_recipient: _recipient, _host: _host, _name: _name, _description: _description, _image: _image)
 
             let dateReceived = 0.0 // getCurrentBlock().timestamp
-            emit NFTMinted(recipient: _recipient, name: _name, description: _description, dateReceived: dateReceived, image: _image)
+            emit NFTMinted(recipient: _recipient, host: _host, name: _name, description: _description, image: _image)
 
             FLOAT.totalSupply = FLOAT.totalSupply + 1
         }
