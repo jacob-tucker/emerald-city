@@ -1,11 +1,8 @@
-// https://play.onflow.org/cc94c193-cdff-4169-9409-184c5aa4c9c7?type=account&id=0
-
 pub contract Reputation {
 
     // Events
     pub event ReputationAdded(skill: String, by: Address, to: Address, amount: UFix64)
     pub event ReputationRemoved(skill: String, by: Address, to: Address, amount: UFix64)
-    pub event NewSeason(number: UInt64, start: UFix64, end: UFix64)
 
     // Paths
     pub var IdentityStoragePath: StoragePath
@@ -14,26 +11,19 @@ pub contract Reputation {
 
     // The information about a season
     pub struct SeasonInfo {
-        pub let number: UInt64
+        pub let season: UInt64
         pub let start: UFix64
         pub var end: UFix64
 
-        init(_seasonDuration: UFix64) {
-            if let currentSeason = Reputation.currentSeason() {
-                self.number = currentSeason + 1
-            } else {
-                self.number = 0
-            }
+        init(_seasonDuration: UFix64, _season: UInt64) {
+            self.season = _season
             self.start = getCurrentBlock().timestamp
             self.end = self.start + _seasonDuration
-
-            emit NewSeason(number: self.number, start: self.start, end: self.end)
         }
     }
 
     // The information for the current season.
-    // Will only be nil before season 0 starts.
-    pub var seasonInfo: SeasonInfo?
+    pub var seasonInfo: SeasonInfo
 
     // Maps a skill to the total amount of that skill that exists
     //
@@ -52,7 +42,7 @@ pub contract Reputation {
         }
         
         init() {
-            self.season = Reputation.seasonInfo!.number
+            self.season = Reputation.seasonInfo.season
             self.skillPoints = {}
             
             for skill in Reputation.skillTotals.keys {
@@ -64,6 +54,8 @@ pub contract Reputation {
     // For the public to be able to read your reputation
     pub resource interface IdentityPublic {
         pub fun getReputation(): {UInt64: Skills}
+        pub fun getReputationInSeason(season: UInt64): Skills
+        pub fun getSpecificSkillInSeason(season: UInt64, skill: String): UFix64
     }
 
     // For the Leader to be able to add skill to your identity
@@ -74,21 +66,35 @@ pub contract Reputation {
     pub resource Identity: IdentityPublic, IdentityLeader {
         // Maps a season # to the Skills this identity has for that season
         //
-        // 0 --> Skills (educational == 50.0, building == 100.0, etc)
-        // 1 --> Skills (educational == 20.0, building == 80.0, etc)
+        // 0 --> Skills (educational = 50.0, building = 100.0, etc)
+        // 1 --> Skills (educational = 20.0, building = 80.0, etc)
         access(contract) var skills: {UInt64: Skills}
 
         access(contract) fun addSkill(skill: String, amount: UFix64) {
-            if self.skills[Reputation.currentSeason()!] == nil {
-                self.skills[Reputation.currentSeason()!] = Skills()
+            if self.skills[Reputation.currentSeason()] == nil {
+                self.skills[Reputation.currentSeason()] = Skills()
             }
 
-            let skillsRef = &self.skills[Reputation.currentSeason()!] as &Skills
+            let skillsRef = &self.skills[Reputation.currentSeason()] as &Skills
             skillsRef.addSkillPoints(skill: skill, amount: amount)
         }
 
         pub fun getReputation(): {UInt64: Skills} {
             return self.skills
+        }
+
+        pub fun getReputationInSeason(season: UInt64): Skills {
+            if self.skills[season] == nil {
+                self.skills[season] = Skills()
+            }
+            return self.skills[season]!
+        }
+
+        pub fun getSpecificSkillInSeason(season: UInt64, skill: String): UFix64 {
+             if self.skills[season] == nil {
+                self.skills[season] = Skills()
+            }
+            return self.skills[season]!.skillPoints[skill]!
         }
 
         init() {
@@ -110,14 +116,16 @@ pub contract Reputation {
             pre {
                 Reputation.skillTotals[self.skill] != nil: 
                     "This is not a valid skill type."
+                Reputation.currentSeason() == self.season:
+                    "This season has already passed."
             }
             identity.addSkill(skill: self.skill, amount: amount)
             Reputation.skillTotals[self.skill] = Reputation.skillTotals[self.skill]! + amount
             emit ReputationAdded(skill: self.skill, by: self.owner!.address, to: identity.owner!.address, amount: amount)
         }
 
-        init(_season: UInt64, _skill: String) {
-            self.season = _season
+        init(_skill: String) {
+            self.season = Reputation.currentSeason()
             self.skill = _skill
         }
     }
@@ -125,10 +133,10 @@ pub contract Reputation {
     pub resource Administrator {
         pub fun startSeason(seasonDuration: UFix64) {
             pre {   
-                Reputation.seasonInfo == nil || Reputation.seasonInfo!.end >= getCurrentBlock().timestamp:
+                Reputation.seasonInfo == nil || Reputation.seasonInfo.end >= getCurrentBlock().timestamp:
                     "This season has not ended yet."
             }   
-            Reputation.seasonInfo = SeasonInfo(_seasonDuration: seasonDuration)
+            Reputation.seasonInfo = SeasonInfo(_seasonDuration: seasonDuration, _season: Reputation.currentSeason() + 1)
         }
 
         pub fun createSkill(skill: String) {
@@ -138,10 +146,18 @@ pub contract Reputation {
             }
             Reputation.skillTotals[skill] = 0.0
         }
+
+        pub fun createLeader(skill: String): @Leader {
+            pre {
+                Reputation.skillTotals[skill] != nil: 
+                    "This is not a valid skill type."
+            }
+            return <- create Leader(_skill: skill)
+        }
     }
 
-    pub fun currentSeason(): UInt64? {
-        return Reputation.seasonInfo?.number
+    pub fun currentSeason(): UInt64 {
+        return Reputation.seasonInfo.season
     }
 
     init() {
@@ -149,7 +165,7 @@ pub contract Reputation {
         self.IdentityPublicPath = /public/ReputationIdentity
         self.LeaderStoragePath = /storage/ReputationLeader
 
-        self.seasonInfo = nil
+        self.seasonInfo = SeasonInfo(_seasonDuration: 0.0, _season: 0)
         self.skillTotals = {}
 
         self.account.save(<- create Administrator(), to: /storage/ReputationAdministrator)
