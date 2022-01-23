@@ -28,7 +28,8 @@ pub contract FLOAT: NonFungibleToken {
         pub fun getViews(): [Type] {
              return [
                 Type<MetadataViews.FLOATMetadataView>(),
-                Type<MetadataViews.Identifier>()
+                Type<MetadataViews.Identifier>(),
+                Type<MetadataViews.Display>()
             ]
         }
 
@@ -38,6 +39,11 @@ pub contract FLOAT: NonFungibleToken {
                     return self.info
                 case Type<MetadataViews.Identifier>():
                     return MetadataViews.Identifier(id: self.id, address: self.owner!.address) 
+                case Type<MetadataViews.Display>():
+                    return MetadataViews.Display(name: self.info.name, 
+                                                 description: self.info.description, 
+                                                 file: MetadataViews.IPFSFile(cid: self.info.image, path: nil)
+                                                )
             }
 
             return nil
