@@ -7,7 +7,7 @@ pub contract Reputation {
     // Paths
     pub var IdentityStoragePath: StoragePath
     pub var IdentityPublicPath: PublicPath
-    pub var LeaderStoragePath: StoragePath
+    pub var AdministratorStoragePath: StoragePath
 
     // The information about a season
     pub struct SeasonInfo {
@@ -17,7 +17,7 @@ pub contract Reputation {
 
         init(_seasonDuration: UFix64, _season: UInt64) {
             self.season = _season
-            self.start = getCurrentBlock().timestamp
+            self.start = 0.0 // getCurrentBlock().timestamp
             self.end = self.start + _seasonDuration
         }
     }
@@ -63,12 +63,19 @@ pub contract Reputation {
         access(contract) fun addSkill(skill: String, amount: UFix64)
     }
 
-    pub resource Identity: IdentityPublic, IdentityLeader {
+    pub resource interface IdentityAdministrator {
+        access(contract) fun addLeader(leader: @Leader)
+    }
+
+    pub resource Identity: IdentityPublic, IdentityLeader, IdentityAdministrator {
         // Maps a season # to the Skills this identity has for that season
         //
         // 0 --> Skills (educational = 50.0, building = 100.0, etc)
         // 1 --> Skills (educational = 20.0, building = 80.0, etc)
         access(contract) var skills: {UInt64: Skills}
+
+        // The Identity may have leaders for a certain season
+        access(self) var leaders: @{UInt64: Leader}
 
         access(contract) fun addSkill(skill: String, amount: UFix64) {
             if self.skills[Reputation.currentSeason()] == nil {
@@ -97,8 +104,21 @@ pub contract Reputation {
             return self.skills[season]!.skillPoints[skill]!
         }
 
+        access(contract) fun addLeader(leader: @Leader) {
+            self.leaders[leader.season] <-! leader
+        }
+
+        pub fun getLeader(): &Leader {
+            return &self.leaders[Reputation.currentSeason()] as &Leader
+        }
+
         init() {
             self.skills = {}
+            self.leaders <- {}
+        }
+
+        destroy() {
+            destroy self.leaders
         }
     }
 
@@ -109,31 +129,36 @@ pub contract Reputation {
     pub resource Leader {
         // The season this leader is active for
         pub let season: UInt64
-        // The skill this leader is allowed to give out
-        pub let skill: String
+        // The amount this leader can give per skill
+        pub let allowedAmounts: {String: UFix64}
 
-        pub fun giveSkill(amount: UFix64, identity: &Identity{IdentityLeader}) {
+        pub fun giveSkill(identity: &Identity{IdentityLeader}, amount: UFix64, skill: String) {
             pre {
-                Reputation.skillTotals[self.skill] != nil: 
-                    "This is not a valid skill type."
+                self.allowedAmounts.containsKey(skill):
+                    "This skill does not exist."
+                self.allowedAmounts[skill]! >= amount:
+                    "You do not have enough skill to give away."
                 Reputation.currentSeason() == self.season:
                     "This season has already passed."
+                self.owner!.address != identity.owner!.address:
+                    "Cannot give reputation to yourself."
             }
-            identity.addSkill(skill: self.skill, amount: amount)
-            Reputation.skillTotals[self.skill] = Reputation.skillTotals[self.skill]! + amount
-            emit ReputationAdded(skill: self.skill, by: self.owner!.address, to: identity.owner!.address, amount: amount)
+            identity.addSkill(skill: skill, amount: amount)
+            Reputation.skillTotals[skill] = Reputation.skillTotals[skill]! + amount
+            self.allowedAmounts[skill] = self.allowedAmounts[skill]! - amount
+            emit ReputationAdded(skill: skill, by: self.owner!.address, to: identity.owner!.address, amount: amount)
         }
 
-        init(_skill: String) {
+        init(_allowedAmounts: {String: UFix64}) {
             self.season = Reputation.currentSeason()
-            self.skill = _skill
+            self.allowedAmounts = _allowedAmounts
         }
     }
 
     pub resource Administrator {
         pub fun startSeason(seasonDuration: UFix64) {
             pre {   
-                Reputation.seasonInfo == nil || Reputation.seasonInfo.end >= getCurrentBlock().timestamp:
+                Reputation.seasonInfo == nil || Reputation.seasonInfo.end >= 0.0: // getCurrentBlock().timestamp
                     "This season has not ended yet."
             }   
             Reputation.seasonInfo = SeasonInfo(_seasonDuration: seasonDuration, _season: Reputation.currentSeason() + 1)
@@ -147,12 +172,17 @@ pub contract Reputation {
             Reputation.skillTotals[skill] = 0.0
         }
 
-        pub fun createLeader(skill: String): @Leader {
+        pub fun createLeader(identity: &Identity{IdentityAdministrator}, allowedAmounts: {String: UFix64}) {
             pre {
-                Reputation.skillTotals[skill] != nil: 
-                    "This is not a valid skill type."
+                allowedAmounts.keys.length == Reputation.skillTotals.keys.length:
+                    "Must pass in amounts for all the skill points."
             }
-            return <- create Leader(_skill: skill)
+            for skill in allowedAmounts.keys {
+                if !Reputation.skillTotals.containsKey(skill) {
+                    panic("This skill does not exist!")
+                }
+            }
+            identity.addLeader(leader: <- create Leader(_allowedAmounts: allowedAmounts))
         }
     }
 
@@ -160,15 +190,19 @@ pub contract Reputation {
         return Reputation.seasonInfo.season
     }
 
+    pub fun getSkillTotals(): {String: UFix64} {
+        return self.skillTotals
+    }
+
     init() {
         self.IdentityStoragePath = /storage/ReputationIdentity
         self.IdentityPublicPath = /public/ReputationIdentity
-        self.LeaderStoragePath = /storage/ReputationLeader
+        self.AdministratorStoragePath = /storage/ReputationAdministrator
 
         self.seasonInfo = SeasonInfo(_seasonDuration: 0.0, _season: 0)
-        self.skillTotals = {}
+        self.skillTotals = {"Education": 0.0, "Building": 0.0, "Governance": 0.0}
 
-        self.account.save(<- create Administrator(), to: /storage/ReputationAdministrator)
+        self.account.save(<- create Administrator(), to: self.AdministratorStoragePath)
     }
 
 }
