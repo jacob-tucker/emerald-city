@@ -12,24 +12,27 @@ pub contract Reputation {
     // The information about a season
     pub struct SeasonInfo {
         pub let season: UInt64
+        pub let description: String
         pub let start: UFix64
         pub var end: UFix64
 
-        init(_seasonDuration: UFix64, _season: UInt64) {
+        init(_seasonDuration: UFix64, _season: UInt64, _description: String) {
             self.season = _season
+            self.description = _description
             self.start = 0.0 // getCurrentBlock().timestamp
             self.end = self.start + _seasonDuration
         }
     }
 
     // The information for the current season.
-    pub var seasonInfo: SeasonInfo
+    access(account) var seasons: {UInt64: SeasonInfo}
+    pub var currentSeason: UInt64
 
     // Maps a skill to the total amount of that skill that exists
     //
     // Education --> 100.0
     // Building --> 60.0
-    access(contract) var skillTotals: {String: UFix64}
+    access(account) var skillTotals: {String: UFix64}
 
     // A container for the skill points a user gets during a certain season.
     // Mainly used inside the user's `Identity`.
@@ -42,7 +45,7 @@ pub contract Reputation {
         }
         
         init() {
-            self.season = Reputation.seasonInfo.season
+            self.season = Reputation.currentSeason
             self.skillPoints = {}
             
             for skill in Reputation.skillTotals.keys {
@@ -63,8 +66,6 @@ pub contract Reputation {
         access(contract) fun addSkill(skill: String, amount: UFix64)
     }
 
-    // For the Administrator to be able to add Leader resources
-    // to your identity
     pub resource interface IdentityAdministrator {
         access(contract) fun addLeader(leader: @Leader)
     }
@@ -77,16 +78,14 @@ pub contract Reputation {
         access(contract) var skills: {UInt64: Skills}
 
         // The Identity may have leaders for a certain season
-        //
-        // Season 0 --> Leader
         access(self) var leaders: @{UInt64: Leader}
 
         access(contract) fun addSkill(skill: String, amount: UFix64) {
-            if self.skills[Reputation.currentSeason()] == nil {
-                self.skills[Reputation.currentSeason()] = Skills()
+            if self.skills[Reputation.currentSeason] == nil {
+                self.skills[Reputation.currentSeason] = Skills()
             }
 
-            let skillsRef = &self.skills[Reputation.currentSeason()] as &Skills
+            let skillsRef = &self.skills[Reputation.currentSeason] as &Skills
             skillsRef.addSkillPoints(skill: skill, amount: amount)
         }
 
@@ -113,7 +112,7 @@ pub contract Reputation {
         }
 
         pub fun getLeader(): &Leader {
-            return &self.leaders[Reputation.currentSeason()] as &Leader
+            return &self.leaders[Reputation.currentSeason] as &Leader
         }
 
         init() {
@@ -142,7 +141,7 @@ pub contract Reputation {
                     "This skill does not exist."
                 self.allowedAmounts[skill]! >= amount:
                     "You do not have enough skill to give away."
-                Reputation.currentSeason() == self.season:
+                Reputation.currentSeason == self.season:
                     "This season has already passed."
                 self.owner!.address != identity.owner!.address:
                     "Cannot give reputation to yourself."
@@ -154,18 +153,19 @@ pub contract Reputation {
         }
 
         init(_allowedAmounts: {String: UFix64}) {
-            self.season = Reputation.currentSeason()
+            self.season = Reputation.currentSeason
             self.allowedAmounts = _allowedAmounts
         }
     }
 
     pub resource Administrator {
-        pub fun startSeason(seasonDuration: UFix64) {
+        pub fun startSeason(seasonDuration: UFix64, description: String) {
             pre {   
-                Reputation.seasonInfo == nil || Reputation.seasonInfo.end >= 0.0: // getCurrentBlock().timestamp
+                Reputation.getCurrentSeasonInfo().end >= 0.0: // getCurrentBlock().timestamp
                     "This season has not ended yet."
             }   
-            Reputation.seasonInfo = SeasonInfo(_seasonDuration: seasonDuration, _season: Reputation.currentSeason() + 1)
+            Reputation.currentSeason = Reputation.currentSeason + 1
+            Reputation.seasons[Reputation.currentSeason] = SeasonInfo(_seasonDuration: seasonDuration, _season: Reputation.currentSeason, _description: description)
         }
 
         pub fun createSkill(skill: String) {
@@ -190,8 +190,8 @@ pub contract Reputation {
         }
     }
 
-    pub fun currentSeason(): UInt64 {
-        return Reputation.seasonInfo.season
+    pub fun getCurrentSeasonInfo(): SeasonInfo {
+        return self.seasons[Reputation.currentSeason]!
     }
 
     pub fun getSkillTotals(): {String: UFix64} {
@@ -203,7 +203,12 @@ pub contract Reputation {
         self.IdentityPublicPath = /public/ReputationIdentity
         self.AdministratorStoragePath = /storage/ReputationAdministrator
 
-        self.seasonInfo = SeasonInfo(_seasonDuration: 0.0, _season: 0)
+        self.seasons = {0: SeasonInfo(_seasonDuration: 0.0, 
+                                      _season: 0, 
+                                      _description: "The first ever season for Emerald City. Covers everything from November 2021 to end of January 2022. Main topics include the Emerald bot, reputation system, and the beginning of FLOAT."
+                                     )
+                       }
+        self.currentSeason = 0
         self.skillTotals = {"Education": 0.0, "Building": 0.0, "Governance": 0.0}
 
         self.account.save(<- create Administrator(), to: self.AdministratorStoragePath)

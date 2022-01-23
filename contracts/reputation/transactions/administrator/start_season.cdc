@@ -2,7 +2,7 @@ import Reputation from 0x01
 
 // Signed by Administrator
 
-transaction(seasonDuration: UFix64) {
+transaction(seasonDuration: UFix64, description: String) {
   let Administrator: &Reputation.Administrator
   
   prepare(signer: AuthAccount) {
@@ -11,7 +11,7 @@ transaction(seasonDuration: UFix64) {
   }
 
   execute {
-    self.Administrator.startSeason(seasonDuration: seasonDuration)
+    self.Administrator.startSeason(seasonDuration: seasonDuration, description: description)
     log("New Season Started")
   }
 }
