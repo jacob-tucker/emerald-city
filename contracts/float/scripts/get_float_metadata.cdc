@@ -1,5 +1,5 @@
-import FLOAT from 0x01
-import MetadataViews from 0x02
+import FLOAT from "../FLOAT.cdc"
+import MetadataViews from "../MetadataViews.cdc"
 
 pub fun main(account: Address, id: UInt64): MetadataViews.FLOATMetadataView? {
   let nftCollection = getAccount(account).getCapability(FLOAT.FLOATCollectionPublicPath)

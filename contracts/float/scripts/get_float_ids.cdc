@@ -1,5 +1,6 @@
-import FLOAT from 0x01
-import NonFungibleToken from 0x03
+import FLOAT from "../FLOAT.cdc"
+import MetadataViews from "../MetadataViews.cdc"
+import NonFungibleToken from "../../NonFungibleToken.cdc"
 
 pub fun main(account: Address): [UInt64] {
   let nftCollection = getAccount(account).getCapability(FLOAT.FLOATCollectionPublicPath)

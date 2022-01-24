@@ -1,4 +1,4 @@
-import FLOAT from 0x01
+import FLOAT from "../FLOAT.cdc"
 
 transaction(name: String, host: Address) {
  

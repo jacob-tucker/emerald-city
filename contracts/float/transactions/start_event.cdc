@@ -1,4 +1,4 @@
-import FLOAT from 0x01
+import FLOAT from "../FLOAT.cdc"
 
 transaction(name: String, description: String, image: String, timePeriod: UFix64) {
 

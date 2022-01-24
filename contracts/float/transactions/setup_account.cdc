@@ -1,6 +1,6 @@
-import FLOAT from 0x01
-import NonFungibleToken from 0x03
-import MetadataViews from 0x02
+import FLOAT from "../FLOAT.cdc"
+import NonFungibleToken from "../../NonFungibleToken.cdc"
+import MetadataViews from "../MetadataViews.cdc"
 
 transaction {
 
