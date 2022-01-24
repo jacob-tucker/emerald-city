@@ -195,8 +195,8 @@ pub contract FLOAT: NonFungibleToken {
         
         // A list of accounts to get track on who is here first
         // Maps the position of who come first to their address.
-        pub(set) var accounts: {UInt64 : Address}
-        pub var capacity: UInt64
+        pub(set) var accounts: {UInt64: Address}
+        pub let capacity: UInt64
 
         init(_host: Address, _name: String, _description: String, _image: String, _capacity: UInt64) {
             self.type = ClaimOptions.Secret
@@ -338,9 +338,10 @@ pub contract FLOAT: NonFungibleToken {
         // For `Limited` FLOATEvents
         if FLOATEvent.type == ClaimOptions.Limited {
             let Limited: &Limited = FLOATEvent as! &Limited
-            let ParticipantNo = UInt64(Limited.accounts.length)
-            if Limited.capacity > ParticipantNo {
-                Limited.accounts[ParticipantNo + 1] = nftCollection.owner!.address
+            let currentCapacity = UInt64(Limited.accounts.length)
+            if Limited.capacity > currentCapacity {
+                Limited.accounts[currentCapacity + 1] = nftCollection.owner!.address
+                self.mint(nftCollection: nftCollection, FLOATEvent: FLOATEvent)
             }
             return
         }
