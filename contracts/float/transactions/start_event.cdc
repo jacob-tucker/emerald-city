@@ -10,7 +10,7 @@ transaction(name: String, description: String, image: String, timePeriod: UFix64
   }
 
   execute {
-    self.FLOATEvents.createEvent(name: name, description: description, image: image, timePeriod: timePeriod)
+    self.FLOATEvents.createEvent(type: FLOAT.ClaimOptions.Open, name: name, description: description, image: image, timePeriod: timePeriod)
     log("Started a new event.")
   }
 }

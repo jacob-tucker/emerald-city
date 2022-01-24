@@ -1,6 +1,6 @@
 import FLOAT from "../FLOAT.cdc"
 
-transaction(name: String, host: Address) {
+transaction(name: String, host: Address, secret: String?) {
  
   let FLOATEvents: &FLOAT.FLOATEvents{FLOAT.FLOATEventsPublic}
   let Collection: &FLOAT.Collection
@@ -14,7 +14,8 @@ transaction(name: String, host: Address) {
   }
 
   execute {
-    FLOAT.mint(FLOATEvents: self.FLOATEvents, name: name, nftCollection: self.Collection)
+    FLOAT.claim(FLOATEvents: self.FLOATEvents, name: name, nftCollection: self.Collection, secret: secret)
     log("Claimed the FLOAT.")
   }
 }
+ 
