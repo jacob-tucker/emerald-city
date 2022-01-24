@@ -200,8 +200,8 @@ pub contract FLOAT: NonFungibleToken {
             pre {
                 self.events[name] == nil: 
                     "An event with this name already exists in your Collection."
-                type == ClaimOptions.Open || timePeriod != nil: 
-                    "If you use Timelock or Secret, you must provide a timePeriod."
+                type != ClaimOptions.Timelock || timePeriod != nil: 
+                    "If you use Timelock as the event type, you must provide a timePeriod."
             }
 
             if type == ClaimOptions.Open {
