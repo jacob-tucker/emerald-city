@@ -244,7 +244,7 @@ pub contract FLOAT: NonFungibleToken {
             return &self.events[name] as auth &{FLOATEvent}
         }
 
-        pub fun addSecret(name: String, secretPhrase: String) {
+        pub fun addSecretToEvent(name: String, secretPhrase: String) {
             let ref = &self.events[name] as auth &{FLOATEvent}
             let secret = ref as! &Secret
             secret.secretPhrase = secretPhrase
