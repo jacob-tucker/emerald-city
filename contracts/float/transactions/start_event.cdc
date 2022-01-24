@@ -1,6 +1,6 @@
 import FLOAT from "../FLOAT.cdc"
 
-transaction(type: UInt8, name: String, description: String, image: String, timePeriod: UFix64?) {
+transaction(type: UInt8, name: String, description: String, image: String, timePeriod: UFix64?, capacity: UInt64?) {
 
   let FLOATEvents: &FLOAT.FLOATEvents
 
@@ -12,10 +12,12 @@ transaction(type: UInt8, name: String, description: String, image: String, timeP
   pre {
       type != 1 || timePeriod != nil:
         "If you are creating a Timelock event, you must pass in a timePeriod."
+      type != ClaimOptions.Limited || capacity != nil:
+        "If you use Limited as the event type, you must provide a capacity."
   }
 
   execute {
-    self.FLOATEvents.createEvent(type: FLOAT.ClaimOptions(rawValue: type)!, name: name, description: description, image: image, timePeriod: timePeriod)
+    self.FLOATEvents.createEvent(type: FLOAT.ClaimOptions(rawValue: type)!, name: name, description: description, image: image, timePeriod: timePeriod, capacity: capacity)
     log("Started a new event.")
   }
 }

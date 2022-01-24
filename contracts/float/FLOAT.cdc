@@ -7,6 +7,7 @@ pub contract FLOAT: NonFungibleToken {
         pub case Open
         pub case Timelock
         pub case Secret
+        pub case Limited
     }
 
     // Paths
@@ -15,6 +16,7 @@ pub contract FLOAT: NonFungibleToken {
     pub let FLOATCollectionPublicPath: PublicPath
     pub let FLOATEventsStoragePath: StoragePath
     pub let FLOATEventsPublicPath: PublicPath
+    pub let FLOATEventsPrivatePath: PrivatePath
 
     pub var totalSupply: UInt64
 
@@ -186,22 +188,44 @@ pub contract FLOAT: NonFungibleToken {
         }
     }
 
+    // If the maximum capacity is reached, this is no longer active.
+    pub struct Limited: FLOATEvent {
+        pub let type: ClaimOptions
+        pub let info: FLOATEventInfo
+        
+        // A list of accounts to get track on who is here first
+        // Maps the position of who come first to their address.
+        pub(set) var accounts: {UInt64 : Address}
+        pub var capacity: UInt64
+
+        init(_host: Address, _name: String, _description: String, _image: String, _capacity: UInt64) {
+            self.type = ClaimOptions.Secret
+            self.info = FLOATEventInfo(_host: _host, _name: _name, _description: _description, _image: _image)
+
+            self.accounts = {}
+            self.capacity = _capacity
+        }
+    }
+
     pub resource interface FLOATEventsPublic {
         pub fun getEvent(name: String): {FLOATEvent}
         access(contract) fun getEventRef(name: String): auth &{FLOATEvent}
         pub fun getAllEvents(): {String: {FLOATEvent}}
+        pub fun addCreationCapability(minter: Capability<&FLOATEvents>) 
     }
 
     pub resource FLOATEvents: FLOATEventsPublic {
         access(contract) var events: {String: {FLOATEvent}}
         access(contract) var otherHosts: {Address: Capability<&FLOATEvents>}
 
-        pub fun createEvent(type: ClaimOptions, name: String, description: String, image: String, timePeriod: UFix64?) {
+        pub fun createEvent(type: ClaimOptions, name: String, description: String, image: String, timePeriod: UFix64?, capacity: UInt64?) {
             pre {
                 self.events[name] == nil: 
                     "An event with this name already exists in your Collection."
                 type != ClaimOptions.Timelock || timePeriod != nil: 
                     "If you use Timelock as the event type, you must provide a timePeriod."
+                type != ClaimOptions.Limited || capacity != nil:
+                    "If you use Limited as the event type, you must provide a capacity."
             }
 
             if type == ClaimOptions.Open {
@@ -210,6 +234,8 @@ pub contract FLOAT: NonFungibleToken {
                 self.events[name] = Timelock(_host: self.owner!.address, _name: name, _description: description, _image: image, _timePeriod: timePeriod!)
             } else if type == ClaimOptions.Secret {
                 self.events[name] = Secret(_host: self.owner!.address, _name: name, _description: description, _image: image)
+            } else if type == ClaimOptions.Limited {
+                self.events[name] = Limited(_host: self.owner!.address, _name: name, _description: description, _image: image, _capacity: capacity!)
             }
         }
 
@@ -228,7 +254,7 @@ pub contract FLOAT: NonFungibleToken {
             self.events.remove(key: name)
         }
 
-        pub fun addCreationCability(minter: Capability<&FLOATEvents>) {
+        pub fun addCreationCapability(minter: Capability<&FLOATEvents>) {
             self.otherHosts[minter.borrow()!.owner!.address] = minter
         }
 
@@ -308,6 +334,16 @@ pub contract FLOAT: NonFungibleToken {
             }
             return
         }
+
+        // For `Limited` FLOATEvents
+        if FLOATEvent.type == ClaimOptions.Limited {
+            let Limited: &Limited = FLOATEvent as! &Limited
+            let ParticipantNo = UInt64(Limited.accounts.length)
+            if Limited.capacity > ParticipantNo {
+                Limited.accounts[ParticipantNo + 1] = nftCollection.owner!.address
+            }
+            return
+        }
     }
 
     access(contract) fun mint(nftCollection: &Collection, FLOATEvent: &{FLOATEvent}) {
@@ -328,5 +364,6 @@ pub contract FLOAT: NonFungibleToken {
         self.FLOATCollectionPublicPath = /public/FLOATCollectionPublicPath
         self.FLOATEventsStoragePath = /storage/FLOATEventsStoragePath
         self.FLOATEventsPublicPath = /public/FLOATEventsPublicPath
+        self.FLOATEventsPrivatePath = /private/FLOATEventsPrivatePath
     }
 }
