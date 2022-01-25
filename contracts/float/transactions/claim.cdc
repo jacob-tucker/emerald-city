@@ -14,7 +14,7 @@ transaction(name: String, host: Address, secret: String?) {
   }
 
   execute {
-    FLOAT.claim(FLOATEvents: self.FLOATEvents, name: name, nftCollection: self.Collection, secret: secret)
+    self.FLOATEvents.claim(name: name, recipient: self.Collection, secret: secret)
     log("Claimed the FLOAT.")
   }
 }
