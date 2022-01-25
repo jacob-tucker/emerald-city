@@ -59,14 +59,15 @@ pub contract FLOAT: NonFungibleToken {
             return nil
         }
 
-        init(_recipient: Address, _info: FLOATEventInfo) {
+        init(_recipient: Address, _info: FLOATEventInfo, _serial: UInt64) {
             self.id = self.uuid
             self.info = MetadataViews.FLOATMetadataView(
                                                         _recipient: _recipient, 
                                                         _host: _info.host, 
                                                         _name: _info.name, 
                                                         _description: _info.description, 
-                                                        _image: _info.image
+                                                        _image: _info.image,
+                                                        _serial: _serial
                                                        )
 
             let dateReceived = 0.0 // getCurrentBlock().timestamp
@@ -86,10 +87,10 @@ pub contract FLOAT: NonFungibleToken {
         }
 
         pub fun withdraw(withdrawID: UInt64): @NonFungibleToken.NFT {
-            var token <- self.ownedNFTs.remove(key: withdrawID) ?? panic("This NFT does not exist in this Collection.")
-            var nft <- token as! @NFT
-            emit FLOATWithdrawn(from: nft.info.recipient, host: nft.info.host, name: nft.info.name, id: nft.uuid)
-            return <- nft
+            pre {
+                false: "The withdraw function is disabled."
+            }
+            return <- create NFT(_recipient: 0x0, _info: FLOATEventInfo(_host: 0x0, _name: "", _description: "", _image: ""), _serial: 0)
         }
 
         pub fun getIDs(): [UInt64] {
@@ -126,7 +127,11 @@ pub contract FLOAT: NonFungibleToken {
         pub let description: String 
         pub let image: String 
         pub let dateCreated: UFix64
-        pub(set) var claimed: {Address: Bool}
+
+        // Effectively the current serial number
+        pub(set) var totalSupply: UInt64
+        // Maps a user's address to its serial number
+        pub(set) var claimed: {Address: UInt64}
         // A manual switch for the host to be able to turn off
         pub(set) var active: Bool
         init(_host: Address, _name: String, _description: String, _image: String) {
@@ -135,6 +140,7 @@ pub contract FLOAT: NonFungibleToken {
             self.description = _description
             self.image = _image
             self.dateCreated = 0.0 // getCurrentBlock().timestamp
+            self.totalSupply = 0
             self.claimed = {}
             self.active = true
         }
@@ -398,12 +404,14 @@ pub contract FLOAT: NonFungibleToken {
     // Helper function to mint FLOATs.
     access(account) fun mint(recipient: &Collection{NonFungibleToken.CollectionPublic}, FLOATEvent: &{FLOATEvent}) {
         pre {
-            !FLOATEvent.info.claimed[recipient.owner!.address]!:
+            FLOATEvent.info.claimed[recipient.owner!.address] == nil:
                 "This person already claimed their FLOAT!"
         }
-        let token <- create NFT(_recipient: recipient.owner!.address, _info: FLOATEvent.info) 
+        let serial: UInt64 = FLOATEvent.info.totalSupply
+        let token <- create NFT(_recipient: recipient.owner!.address, _info: FLOATEvent.info, _serial: serial) 
         recipient.deposit(token: <- token)
-        FLOATEvent.info.claimed[recipient.owner!.address] = true
+        FLOATEvent.info.claimed[recipient.owner!.address] = serial
+        FLOATEvent.info.totalSupply = serial + 1
     }
 
     init() {

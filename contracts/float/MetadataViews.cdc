@@ -18,20 +18,26 @@ pub contract MetadataViews {
     }
 
     pub struct FLOATMetadataView {
+        // The original recipient
         pub let recipient: Address
+        // The address of the host who created the event this
+        // FLOAT came from.
         pub let host: Address
+        // The name of the event this FLOAT came from.
         pub let name: String 
         pub let description: String
         pub let dateReceived: UFix64
         pub let image: String
+        pub let serial: UInt64
 
-        init(_recipient: Address, _host: Address, _name: String, _description: String, _image: String) {
+        init(_recipient: Address, _host: Address, _name: String, _description: String, _image: String, _serial: UInt64) {
             self.recipient = _recipient
             self.host = _host
             self.name = _name
             self.description = _description
             self.dateReceived = 0.0 // getCurrentBlock().timestamp
             self.image = _image
+            self.serial = _serial
         }
     }
 
