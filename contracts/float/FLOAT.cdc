@@ -222,14 +222,14 @@ pub contract FLOAT: NonFungibleToken {
 
     pub resource interface FLOATEventsPublic {
         pub fun getEvent(name: String): {FLOATEvent}
-        access(contract) fun getEventRef(name: String): auth &{FLOATEvent}
         pub fun getAllEvents(): {String: {FLOATEvent}}
         pub fun addCreationCapability(minter: Capability<&FLOATEvents>) 
+        pub fun claim(name: String, recipient: &Collection, secret: String?)
     }
 
     pub resource FLOATEvents: FLOATEventsPublic {
-        access(contract) var events: {String: {FLOATEvent}}
-        access(contract) var otherHosts: {Address: Capability<&FLOATEvents>}
+        access(self) var events: {String: {FLOATEvent}}
+        access(self) var otherHosts: {Address: Capability<&FLOATEvents>}
 
         // Create a new FLOAT Event.
         pub fun createEvent(type: ClaimOptions, name: String, description: String, image: String, timePeriod: UFix64?, capacity: UInt64?) {
@@ -281,18 +281,6 @@ pub contract FLOAT: NonFungibleToken {
             self.otherHosts[minter.borrow()!.owner!.address] = minter
         }
 
-        // For giving out FLOATs when the FLOAT Event is `Admin` type.
-        pub fun distributeDirectly(name: String, recipient: &Collection{NonFungibleToken.CollectionPublic}) {
-            pre {
-                self.events[name] != nil:
-                    "This event does not exist."
-                self.events[name]!.type == ClaimOptions.Admin:
-                    "This event is not an Admin type."
-            }
-            let FLOATEvent = self.getEventRef(name: name)
-            FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
-        }
-
         // Get the Capability to do stuff with this FLOATEvents resource.
         pub fun getCreationCapability(host: Address): Capability<&FLOATEvents> {
             return self.otherHosts[host]!
@@ -301,11 +289,6 @@ pub contract FLOAT: NonFungibleToken {
         // Get a {FLOATEvent} struct. The returned value is a copy.
         pub fun getEvent(name: String): {FLOATEvent} {
             return self.events[name] ?? panic("This event does not exist in this Collection.")
-        }
-
-        // Only used in this contract, so you can update things on the {FLOATEvent} struct.
-        access(contract) fun getEventRef(name: String): auth &{FLOATEvent} {
-            return &self.events[name] as auth &{FLOATEvent}
         }
 
         // If you have a `Secret` FLOATEvent and want to add the secretPhrase to it.
@@ -322,6 +305,82 @@ pub contract FLOAT: NonFungibleToken {
             return self.events
         }
 
+        /*************************************** CLAIMING ***************************************/
+
+        // Helper function for the 2 functions below.
+        access(self) fun getEventRef(name: String): auth &{FLOATEvent} {
+            return &self.events[name] as auth &{FLOATEvent}
+        }
+
+        // This is for claiming `Admin` FLOAT Events.
+        //
+        // For giving out FLOATs when the FLOAT Event is `Admin` type.
+        pub fun distributeDirectly(name: String, recipient: &Collection{NonFungibleToken.CollectionPublic}) {
+            pre {
+                self.events[name] != nil:
+                    "This event does not exist."
+                self.events[name]!.type == ClaimOptions.Admin:
+                    "This event is not an Admin type."
+            }
+            let FLOATEvent = self.getEventRef(name: name)
+            FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
+        }
+
+        // This is for claiming `Open`, `Timelock`, `Secret`, or `Limited` FLOAT Events.
+        //
+        // The `secret` parameter is only necessary if you're claiming a `Secret` FLOAT.
+        pub fun claim(name: String, recipient: &Collection, secret: String?) {
+            pre {
+                self.getEvent(name: name).info.active: 
+                    "This FLOATEvent is not active."
+            }
+            let FLOATEvent: auth &{FLOATEvent} = self.getEventRef(name: name)
+            
+            // For `Open` FLOATEvents
+            if FLOATEvent.type == ClaimOptions.Open {
+                FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
+                return
+            }
+            
+            // For `Timelock` FLOATEvents
+            if FLOATEvent.type == ClaimOptions.Timelock {
+                let Timelock: &Timelock = FLOATEvent as! &Timelock
+                if Timelock.dateEnding <= getCurrentBlock().timestamp {
+                    panic("Sorry! The time has run out to mint this Timelock FLOAT.")
+                }
+                FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
+                return
+            } 
+            
+            // For `Secret` FLOATEvents
+            if FLOATEvent.type == ClaimOptions.Secret {
+                let Secret: &Secret = FLOATEvent as! &Secret
+                if Secret.secretPhrase == "" && secret == nil {
+                    panic("You must provide a secret phrase code to claim your FLOAT ahead of time.")
+                }
+
+                if Secret.secretPhrase == "" {
+                    Secret.accounts[recipient.owner!.address] = secret
+                } else if Secret.accounts[recipient.owner!.address] == Secret.secretPhrase {
+                    FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
+                }
+                return
+            }
+
+            // For `Limited` FLOATEvents
+            if FLOATEvent.type == ClaimOptions.Limited {
+                let Limited: &Limited = FLOATEvent as! &Limited
+                let currentCapacity = UInt64(Limited.accounts.length)
+                if currentCapacity < Limited.capacity {
+                    Limited.accounts[currentCapacity + 1] = recipient.owner!.address
+                    FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
+                }
+                return
+            }
+        }
+
+        /******************************************************************************/
+
         init() {
             self.events = {}
             self.otherHosts = {}
@@ -336,63 +395,8 @@ pub contract FLOAT: NonFungibleToken {
         return <- create FLOATEvents()
     }
 
-    // Claim a FLOAT.
-    //
-    // This is for claiming `Open`, `Timelock`, `Secret`, or `Limited` FLOAT Events.
-    //
-    // The `secret` parameter is only necessary if you're claiming a `Secret` FLOAT.
-    pub fun claim(FLOATEvents: &FLOATEvents{FLOATEventsPublic}, name: String, recipient: &Collection, secret: String?) {
-        pre {
-            FLOATEvents.getEvent(name: name).info.active: 
-                "This FLOATEvent is not active."
-        }
-        let FLOATEvent: auth &{FLOATEvent} = FLOATEvents.getEventRef(name: name)
-        
-        // For `Open` FLOATEvents
-        if FLOATEvent.type == ClaimOptions.Open {
-            self.mint(recipient: recipient, FLOATEvent: FLOATEvent)
-            return
-        }
-        
-        // For `Timelock` FLOATEvents
-        if FLOATEvent.type == ClaimOptions.Timelock {
-            let Timelock: &Timelock = FLOATEvent as! &Timelock
-            if Timelock.dateEnding <= getCurrentBlock().timestamp {
-                panic("Sorry! The time has run out to mint this Timelock FLOAT.")
-            }
-            self.mint(recipient: recipient, FLOATEvent: FLOATEvent)
-            return
-        } 
-        
-        // For `Secret` FLOATEvents
-        if FLOATEvent.type == ClaimOptions.Secret {
-            let Secret: &Secret = FLOATEvent as! &Secret
-            if Secret.secretPhrase == "" && secret == nil {
-                panic("You must provide a secret phrase code to claim your FLOAT ahead of time.")
-            }
-
-            if Secret.secretPhrase == "" {
-                Secret.accounts[recipient.owner!.address] = secret
-            } else if Secret.accounts[recipient.owner!.address] == Secret.secretPhrase {
-                self.mint(recipient: recipient, FLOATEvent: FLOATEvent)
-            }
-            return
-        }
-
-        // For `Limited` FLOATEvents
-        if FLOATEvent.type == ClaimOptions.Limited {
-            let Limited: &Limited = FLOATEvent as! &Limited
-            let currentCapacity = UInt64(Limited.accounts.length)
-            if currentCapacity < Limited.capacity {
-                Limited.accounts[currentCapacity + 1] = recipient.owner!.address
-                self.mint(recipient: recipient, FLOATEvent: FLOATEvent)
-            }
-            return
-        }
-    }
-
     // Helper function to mint FLOATs.
-    access(contract) fun mint(recipient: &Collection{NonFungibleToken.CollectionPublic}, FLOATEvent: &{FLOATEvent}) {
+    access(account) fun mint(recipient: &Collection{NonFungibleToken.CollectionPublic}, FLOATEvent: &{FLOATEvent}) {
         pre {
             !FLOATEvent.info.claimed[recipient.owner!.address]!:
                 "This person already claimed their FLOAT!"
