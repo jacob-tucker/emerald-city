@@ -88,8 +88,9 @@ pub contract FLOAT: NonFungibleToken {
         }
 
         pub fun withdraw(withdrawID: UInt64): @NonFungibleToken.NFT {
-            let NonFungibleTokenNFT <- self.ownedNFTs.remove(key: withdrawID) ?? panic("You do not own this FLOAT in your collection")
-            let nft <- NonFungibleTokenNFT as! @NFT
+            let token <- self.ownedNFTs.remove(key: withdrawID) ?? panic("You do not own this FLOAT in your collection")
+            let nft <- token as! @NFT
+            
             assert(nft.info.transferrable, message: "This FLOAT is not transferrable")
 
             return <- nft
