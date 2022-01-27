@@ -118,7 +118,7 @@ b
         pub let type: ClaimPropType
     }
 
-    pub struct FLOATEventInfo {
+    pub struct FLOATEvent {
         // Info that will be present in the NFT
         pub let host: Address
         pub let name: String
@@ -278,14 +278,15 @@ b
     }
 
     pub resource interface FLOATEventsPublic {
-        pub fun getEvent(name: String): FLOATEventInfo
-        pub fun getAllEvents(): {String: FLOATEventInfo}
+        pub fun getEvent(name: String): FLOATEvent
+        pub fun getEventNames(): [String]
+        pub fun getAllEvents(): {String: FLOATEvent}
         pub fun addCreationCapability(minter: Capability<&FLOATEvents>) 
         pub fun claim(name: String, recipient: &Collection, secret: String?)
     }
 
     pub resource FLOATEvents: FLOATEventsPublic {
-        access(self) var events: {String: FLOATEventInfo}
+        access(self) var events: {String: FLOATEvent}
         access(self) var otherHosts: {Address: Capability<&FLOATEvents>}
 
         // Create a new FLOAT Event.
@@ -295,7 +296,7 @@ b
                     "An event with this name already exists in your Collection."
             }
 
-            let FLOATEvent = FLOATEventInfo(
+            let FLOATEvent = FLOATEvent(
                 _claimType: claimType, 
                 _claimProps: claimProps, 
                 _host: self.owner!.address, 
@@ -325,26 +326,31 @@ b
             return self.otherHosts[host]!
         }
 
-        // Get a public view of the FLOATEventInfo.
-        pub fun getEvent(name: String): FLOATEventInfo {
+        // Get a Host view (reference) of the FLOATEvent.
+        // 
+        // You can use this ref right now to toggleActive
+        pub fun getEventRef(name: String): &FLOATEvent  {
+            return &self.events[name] as &FLOATEvent
+        }
+
+        // Get a public view of the FLOATEvent.
+        pub fun getEvent(name: String): FLOATEvent {
             return self.events[name] ?? panic("This event does not exist in this Collection.")
         }
 
-        // Get a Host view (reference) of the FLOATEventInfo.
-        // 
-        // You can use this ref right now to toggleActive
-        pub fun getEventRef(name: String): &FLOATEventInfo {
-            return &self.events[name] as &FLOATEventInfo
+        pub fun getEventNames(): [String] {
+            return self.events.keys
         }
 
         // Return all the FLOATEvents you have ever created.
-        pub fun getAllEvents(): {String: FLOATEventInfo} {
+        pub fun getAllEvents(): {String: FLOATEvent} {
             return self.events
         }
 
         /*************************************** CLAIMING ***************************************/
 
         // This is for distributing NotClaimable FLOAT Events.
+        // NOT available to the public.
         pub fun distributeDirectly(name: String, recipient: &Collection{NonFungibleToken.CollectionPublic} ) {
             pre {
                 self.events[name] != nil:
@@ -359,6 +365,7 @@ b
         // This is for claiming Claimable FLOAT Events.
         //
         // The `secret` parameter is only necessary if you're claiming a `Secret` FLOAT.
+        // Available to the public.
         pub fun claim(name: String, recipient: &Collection, secret: String?) {
             pre {
                 self.getEvent(name: name).active: 
@@ -366,7 +373,7 @@ b
                 self.events[name]!.claimType == ClaimType.Claimable:
                     "This event is NotClaimable."
             }
-            let FLOATEvent: &FLOATEventInfo = self.getEventRef(name: name)
+            let FLOATEvent: &FLOATEvent = self.getEventRef(name: name)
             
             // If the FLOATEvent has the `Timelock` Prop
             if FLOATEvent.Timelock != nil {
