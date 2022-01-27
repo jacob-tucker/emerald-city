@@ -171,16 +171,16 @@ b
 
         init (
             _claimType: ClaimType, 
-            _claimPropTypes: {ClaimPropType: {ClaimProp}}, 
+            _claimProps: {ClaimPropType: {ClaimProp}}, 
             _host: Address, _name: String,
             _description: String, 
             _image: String, 
             _transferrable: Bool
         ) {
             self.claimType = _claimType
-            self.Timelock = _claimPropTypes[ClaimPropType.Timelock] as? Timelock
-            self.Secret = _claimPropTypes[ClaimPropType.Secret] as? Secret
-            self.Limited = _claimPropTypes[ClaimPropType.Limited] as? Limited
+            self.Timelock = _claimProps[ClaimPropType.Timelock] as? Timelock
+            self.Secret = _claimProps[ClaimPropType.Secret] as? Secret
+            self.Limited = _claimProps[ClaimPropType.Limited] as? Limited
 
             self.host = _host
             self.name = _name
@@ -297,7 +297,7 @@ b
 
             let FLOATEvent = FLOATEventInfo(
                 _claimType: claimType, 
-                _claimPropTypes: claimProps, 
+                _claimProps: claimProps, 
                 _host: self.owner!.address, 
                 _name: name, 
                 _description: description, 
