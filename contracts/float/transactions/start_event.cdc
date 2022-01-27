@@ -1,6 +1,6 @@
 import FLOAT from "../FLOAT.cdc"
 
-transaction(type: UInt8, name: String, description: String, image: String, timePeriod: UFix64?, capacity: UInt64?) {
+transaction(type: UInt8, name: String, description: String, image: String, timePeriod: UFix64?, capacity: UInt64?, transferrable: Bool) {
 
   let FLOATEvents: &FLOAT.FLOATEvents
 
@@ -10,7 +10,7 @@ transaction(type: UInt8, name: String, description: String, image: String, timeP
   }
 
   execute {
-    self.FLOATEvents.createEvent(type: FLOAT.ClaimOptions(rawValue: type)!, name: name, description: description, image: image, timePeriod: timePeriod, capacity: capacity)
+    self.FLOATEvents.createEvent(type: FLOAT.ClaimOptions(rawValue: type)!, name: name, description: description, image: image, timePeriod: timePeriod, capacity: capacity, transferrable: transferrable)
     log("Started a new event.")
   }
 }

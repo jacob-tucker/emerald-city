@@ -59,7 +59,7 @@ pub contract FLOAT: NonFungibleToken {
             return nil
         }
 
-        init(_recipient: Address, _info: FLOATEventInfo, _serial: UInt64, _transferrable:Bool) {
+        init(_recipient: Address, _info: FLOATEventInfo, _serial: UInt64) {
             self.id = self.uuid
             self.info = MetadataViews.FLOATMetadataView(
                                                         _recipient: _recipient, 
@@ -68,7 +68,7 @@ pub contract FLOAT: NonFungibleToken {
                                                         _description: _info.description, 
                                                         _image: _info.image,
                                                         _serial: _serial,
-                                                        _transferrable: _transferrable
+                                                        _transferrable: _info.transferrable
                                                        )
 
             let dateReceived = 0.0 // getCurrentBlock().timestamp
@@ -333,7 +333,7 @@ pub contract FLOAT: NonFungibleToken {
                     "This event is not an Admin type."
             }
             let FLOATEvent = self.getEventRef(name: name)
-            FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent ,transferrable: FLOATEvent.info.transferrable)
+            FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
         }
 
         // This is for claiming `Open`, `Timelock`, `Secret`, or `Limited` FLOAT Events.
@@ -348,7 +348,7 @@ pub contract FLOAT: NonFungibleToken {
             
             // For `Open` FLOATEvents
             if FLOATEvent.type == ClaimOptions.Open {
-                FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent,transferrable: FLOATEvent.info.transferrable )
+                FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
                 return
             }
             
@@ -358,7 +358,7 @@ pub contract FLOAT: NonFungibleToken {
                 if Timelock.dateEnding <= getCurrentBlock().timestamp {
                     panic("Sorry! The time has run out to mint this Timelock FLOAT.")
                 }
-                FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent,transferrable: FLOATEvent.info.transferrable)
+                FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
                 return
             } 
             
@@ -372,7 +372,7 @@ pub contract FLOAT: NonFungibleToken {
                 if Secret.secretPhrase == "" {
                     Secret.accounts[recipient.owner!.address] = secret
                 } else if Secret.accounts[recipient.owner!.address] == Secret.secretPhrase {
-                    FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent,transferrable: FLOATEvent.info.transferrable)
+                    FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
                 }
                 return
             }
@@ -383,7 +383,7 @@ pub contract FLOAT: NonFungibleToken {
                 let currentCapacity = UInt64(Limited.accounts.length)
                 if currentCapacity < Limited.capacity {
                     Limited.accounts[currentCapacity + 1] = recipient.owner!.address
-                    FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent,transferrable: FLOATEvent.info.transferrable)
+                    FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
                 }
                 return
             }
@@ -406,13 +406,13 @@ pub contract FLOAT: NonFungibleToken {
     }
 
     // Helper function to mint FLOATs.
-    access(account) fun mint(recipient: &Collection{NonFungibleToken.CollectionPublic}, FLOATEvent: &{FLOATEvent}, transferrable: Bool) {
+    access(account) fun mint(recipient: &Collection{NonFungibleToken.CollectionPublic}, FLOATEvent: &{FLOATEvent}) {
         pre {
             FLOATEvent.info.claimed[recipient.owner!.address] == nil:
                 "This person already claimed their FLOAT!"
         }
         let serial: UInt64 = FLOATEvent.info.totalSupply
-        let token <- create NFT(_recipient: recipient.owner!.address, _info: FLOATEvent.info, _serial: serial, _transferrable: transferrable) 
+        let token <- create NFT(_recipient: recipient.owner!.address, _info: FLOATEvent.info, _serial: serial) 
         recipient.deposit(token: <- token)
         FLOATEvent.info.claimed[recipient.owner!.address] = serial
         FLOATEvent.info.totalSupply = serial + 1
