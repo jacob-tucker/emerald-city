@@ -353,15 +353,7 @@ b
 
         // Get a Host view (reference) of the FLOATEventInfo.
         // 
-        // You can use this to change some properties of the 
-        // ClaimPropTypes present in the event.
-        //
-        // Here's an example of the host of the `floatEvents: FLOATEvents` resource
-        // changing the secretPhrase of one of their events 
-        // let secret: &Secret = floatEvents
-        //                            .getEventRef(name: "Town Hall #1")
-        //                            .getClaimPropRef(claimPropType: ClaimPropType) as! &Secret
-        // secret.secretPhrase = "My Secret Phrase"
+        // You can use this ref right now to toggleActive
         pub fun getEventRef(name: String): &FLOATEventInfo {
             return &self.events[name] as &FLOATEventInfo
         }
