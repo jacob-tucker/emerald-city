@@ -225,8 +225,10 @@ b
         // Maps their address to the code they put in.
         access(account) var accounts: {Address: String}
         // The secret code, set by the owner of this event.
-        pub var secretPhrase: String
-        pub var claiamble: Bool
+        pub var secretPhrase: String?
+        // Claimable means the user can actually receive the FLOAT
+        // now. The secretPhrase is non-nil.
+        pub var claimable: Bool
 
         access(account) fun verify(accountAddr: Address) {
             assert(
@@ -235,17 +237,17 @@ b
             )
         }
 
-        pub fun addSecretPhrase(secret: String) {
-            self.secretPhrase = secret
-            self.claiamble = true
+        pub fun updateSecretPhrase(secret: String?) {
+             self.claimable = secret != nil
+             self.secretPhrase = secret
         }
 
         init() {
             self.type = ClaimPropType.Secret
 
             self.accounts = {}
-            self.secretPhrase = ""
-            self.claiamble = false
+            self.secretPhrase = nil
+            self.claimable = false
         }
     }
 
@@ -374,6 +376,7 @@ b
                     "This event is NotClaimable."
             }
             let FLOATEvent: &FLOATEvent = self.getEventRef(name: name)
+            let recipientAddr: Address = recipient.owner!.address
             
             // If the FLOATEvent has the `Timelock` Prop
             if FLOATEvent.Timelock != nil {
@@ -385,21 +388,21 @@ b
             if FLOATEvent.Secret != nil {
                 let Secret: &Secret = FLOATEvent.Secret as! &Secret
 
-                if !Secret.claiamble {
+                if !Secret.claimable {
                     assert(
                         secret != nil, 
                         message: "You must provide a secret phrase code to mark your FLOAT ahead of time."
                     )
-                    Secret.accounts[recipient.owner!.address] = secret
+                    Secret.accounts[recipientAddr] = secret
                 } else {
-                    Secret.verify(accountAddr: recipient.owner!.address)
+                    Secret.verify(accountAddr: recipientAddr)
                 }
             }
 
             // If the FLOATEvent has the `Limited` Prop
             if FLOATEvent.Limited != nil {
             let Limited: &Limited = FLOATEvent.Limited as! &Limited
-               Limited.verify(accountAddr: recipient.owner!.address)
+               Limited.verify(accountAddr: recipientAddr)
             }
 
             // You have passed all the props (which act as restrictions).
