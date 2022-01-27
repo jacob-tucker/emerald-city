@@ -29,8 +29,9 @@ pub contract MetadataViews {
         pub let dateReceived: UFix64
         pub let image: String
         pub let serial: UInt64
+        pub let transferrable: Bool
 
-        init(_recipient: Address, _host: Address, _name: String, _description: String, _image: String, _serial: UInt64) {
+        init(_recipient: Address, _host: Address, _name: String, _description: String, _image: String, _serial: UInt64, _transferrable: Bool) {
             self.recipient = _recipient
             self.host = _host
             self.name = _name
@@ -38,6 +39,7 @@ pub contract MetadataViews {
             self.dateReceived = 0.0 // getCurrentBlock().timestamp
             self.image = _image
             self.serial = _serial
+            self.transferrable = _transferrable
         }
     }
 
