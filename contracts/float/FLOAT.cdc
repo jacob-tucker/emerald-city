@@ -289,31 +289,10 @@ b
         access(self) var otherHosts: {Address: Capability<&FLOATEvents>}
 
         // Create a new FLOAT Event.
-        pub fun createEvent(claimType: ClaimType, claimPropTypes: {ClaimPropType: Bool}, name: String, description: String, image: String, timePeriod: UFix64?, capacity: UInt64?, transferrable: Bool) {
+        pub fun createEvent(claimType: ClaimType, claimProps: {ClaimPropType: {ClaimProp}}, name: String, description: String, image: String, transferrable: Bool) {
             pre {
                 self.events[name] == nil: 
                     "An event with this name already exists in your Collection."
-            }
-
-            let claimProps: {ClaimPropType: {ClaimProp}} = {}
-            if claimPropTypes[ClaimPropType.Timelock] != nil && claimPropTypes[ClaimPropType.Timelock]! {
-                assert(
-                    timePeriod != nil, 
-                    message: "You must provide a non-nil timePeriod if you wish to include the Timelock Prop."
-                )
-                claimProps[ClaimPropType.Timelock] = Timelock(_timePeriod: timePeriod!)
-            } 
-            
-            if claimPropTypes[ClaimPropType.Secret] != nil && claimPropTypes[ClaimPropType.Secret]! {
-                claimProps[ClaimPropType.Secret] = Secret()
-            } 
-            
-            if claimPropTypes[ClaimPropType.Limited] != nil && claimPropTypes[ClaimPropType.Limited]! {
-                assert(
-                    capacity != nil, 
-                    message: "You must provide a non-nil capacity if you wish to include the Limited Prop."
-                )
-                claimProps[ClaimPropType.Limited] = Limited(_capacity: capacity!)
             }
 
             let FLOATEvent = FLOATEventInfo(
