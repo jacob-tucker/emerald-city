@@ -7,13 +7,7 @@ pub contract FLOAT: NonFungibleToken {
         pub case Claimable
         pub case NotClaimable
     }
-
-    pub enum ClaimPropType: UInt8 {
-        pub case Timelock
-        pub case Secret
-        pub case Limited
-    }
-b
+    
     // Paths
     //
     pub let FLOATCollectionStoragePath: StoragePath
@@ -114,10 +108,6 @@ b
         }
     }
 
-    pub struct interface ClaimProp {
-        pub let type: ClaimPropType
-    }
-
     pub struct FLOATEvent {
         // Info that will be present in the NFT
         pub let host: Address
@@ -171,16 +161,18 @@ b
 
         init (
             _claimType: ClaimType, 
-            _claimProps: {ClaimPropType: {ClaimProp}}, 
+            _timelock: Timelock?,
+            _secret: Secret?,
+            _limited: Limited?,
             _host: Address, _name: String,
             _description: String, 
             _image: String, 
             _transferrable: Bool
         ) {
             self.claimType = _claimType
-            self.Timelock = _claimProps[ClaimPropType.Timelock] as? Timelock
-            self.Secret = _claimProps[ClaimPropType.Secret] as? Secret
-            self.Limited = _claimProps[ClaimPropType.Limited] as? Limited
+            self.Timelock = _timelock
+            self.Secret = _secret
+            self.Limited = _limited
 
             self.host = _host
             self.name = _name
@@ -195,9 +187,7 @@ b
         }
     }
 
-    pub struct Timelock: ClaimProp {
-        pub let type: ClaimPropType
-        
+    pub struct Timelock {
         // An automatic switch handled by the contract
         // to stop people from claiming after a certain time.
         pub let dateStart: UFix64
@@ -211,16 +201,12 @@ b
         }
 
         init(_timePeriod: UFix64) {
-            self.type = ClaimPropType.Timelock
-
             self.dateStart = getCurrentBlock().timestamp
             self.dateEnding = getCurrentBlock().timestamp + _timePeriod
         }
     }
 
-    pub struct Secret: ClaimProp {
-        pub let type: ClaimPropType
-        
+    pub struct Secret {
         // A list of accounts to see who has put in a code.
         // Maps their address to the code they put in.
         access(account) var accounts: {Address: String}
@@ -243,8 +229,6 @@ b
         }
 
         init() {
-            self.type = ClaimPropType.Secret
-
             self.accounts = {}
             self.secretPhrase = nil
             self.claimable = false
@@ -252,15 +236,13 @@ b
     }
 
     // If the maximum capacity is reached, this is no longer active.
-    pub struct Limited: ClaimProp {
-        pub let type: ClaimPropType
-        
+    pub struct Limited {
         // A list of accounts to get track on who is here first
         // Maps the position of who come first to their address.
         access(account) var accounts: {UInt64: Address}
         pub var capacity: UInt64
 
-        access(account) fun verify(accountAddr: Address): Bool {
+        access(account) fun verify(accountAddr: Address) {
             let currentCapacity = UInt64(self.accounts.length)
             assert(
                 currentCapacity < self.capacity,
@@ -268,12 +250,9 @@ b
             )
             
             self.accounts[currentCapacity + 1] = accountAddr
-            return true
         }
 
         init(_capacity: UInt64) {
-            self.type = ClaimPropType.Limited
-
             self.accounts = {}
             self.capacity = _capacity
         }
@@ -292,7 +271,7 @@ b
         access(self) var otherHosts: {Address: Capability<&FLOATEvents>}
 
         // Create a new FLOAT Event.
-        pub fun createEvent(claimType: ClaimType, claimProps: {ClaimPropType: {ClaimProp}}, name: String, description: String, image: String, transferrable: Bool) {
+        pub fun createEvent(claimType: ClaimType, timelock: Timelock?, secret: Secret?, limited: Limited?, name: String, description: String, image: String, transferrable: Bool) {
             pre {
                 self.events[name] == nil: 
                     "An event with this name already exists in your Collection."
@@ -300,7 +279,9 @@ b
 
             let FLOATEvent = FLOATEvent(
                 _claimType: claimType, 
-                _claimProps: claimProps, 
+                _timelock: timelock,
+                _secret: secret,
+                _limited: limited,
                 _host: self.owner!.address, 
                 _name: name, 
                 _description: description, 
@@ -377,16 +358,10 @@ b
             }
             let FLOATEvent: &FLOATEvent = self.getEventRef(name: name)
             let recipientAddr: Address = recipient.owner!.address
-            
-            // If the FLOATEvent has the `Timelock` Prop
-            if FLOATEvent.Timelock != nil {
-                let Timelock: &Timelock = FLOATEvent.Timelock as! &Timelock
-                Timelock.verify()
-            } 
-            
+
             // If the FLOATEvent has the `Secret` Prop
             if FLOATEvent.Secret != nil {
-                let Secret: &Secret = FLOATEvent.Secret as! &Secret
+                let Secret: &Secret = &FLOATEvent.Secret! as &Secret
 
                 if !Secret.claimable {
                     assert(
@@ -394,15 +369,21 @@ b
                         message: "You must provide a secret phrase code to mark your FLOAT ahead of time."
                     )
                     Secret.accounts[recipientAddr] = secret
-                } else {
-                    Secret.verify(accountAddr: recipientAddr)
+                    return
                 }
+                Secret.verify(accountAddr: recipientAddr)
             }
+            
+            // If the FLOATEvent has the `Timelock` Prop
+            if FLOATEvent.Timelock != nil {
+                let Timelock: &Timelock = &FLOATEvent.Timelock! as &Timelock
+                Timelock.verify()
+            } 
 
             // If the FLOATEvent has the `Limited` Prop
             if FLOATEvent.Limited != nil {
-            let Limited: &Limited = FLOATEvent.Limited as! &Limited
-               Limited.verify(accountAddr: recipientAddr)
+                let Limited: &Limited = &FLOATEvent.Limited! as &Limited
+                Limited.verify(accountAddr: recipientAddr)
             }
 
             // You have passed all the props (which act as restrictions).
