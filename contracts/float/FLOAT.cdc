@@ -108,7 +108,7 @@ pub contract FLOAT: NonFungibleToken {
         }
     }
 
-    pub struct FLOATEvent {
+    pub resource FLOATEvent {
         // Info that will be present in the NFT
         pub let host: Address
         pub let name: String
@@ -132,6 +132,10 @@ pub contract FLOAT: NonFungibleToken {
         pub fun toggleActive(): Bool {
             self.active = !self.active
             return self.active
+        }
+  
+        pub fun getClaimed(): {Address: UInt64} {
+            return self.claimed
         }
 
         // Helper function to mint FLOATs.
@@ -207,31 +211,22 @@ pub contract FLOAT: NonFungibleToken {
     }
 
     pub struct Secret {
-        // A list of accounts to see who has put in a code.
-        // Maps their address to the code they put in.
-        access(account) var accounts: {Address: String}
         // The secret code, set by the owner of this event.
-        pub var secretPhrase: String?
-        // Claimable means the user can actually receive the FLOAT
-        // now. The secretPhrase is non-nil.
-        pub var claimable: Bool
+        access(account) var secretPhrase: String
 
-        access(account) fun verify(accountAddr: Address) {
+        access(account) fun verify(secretPhrase: String?) {
             assert(
-                self.accounts[accountAddr] == self.secretPhrase, 
-                message: "You did not guess the correct secret before the Host typed it in."
+                secretPhrase != nil,
+                message: "You must input a secret phrase."
+            )
+            assert(
+                self.secretPhrase == secretPhrase, 
+                message: "You did not input the correct secret phrase."
             )
         }
 
-        pub fun updateSecretPhrase(secret: String?) {
-             self.claimable = secret != nil
-             self.secretPhrase = secret
-        }
-
-        init() {
-            self.accounts = {}
-            self.secretPhrase = nil
-            self.claimable = false
+        init(_secretPhrase: String) {
+            self.secretPhrase = _secretPhrase
         }
     }
 
@@ -257,27 +252,35 @@ pub contract FLOAT: NonFungibleToken {
             self.capacity = _capacity
         }
     }
-
+ 
     pub resource interface FLOATEventsPublic {
-        pub fun getEvent(name: String): FLOATEvent
-        pub fun getEventNames(): [String]
-        pub fun getAllEvents(): {String: FLOATEvent}
+        pub fun getEvent(name: String): &FLOATEvent
+        pub fun getAllEvents(): [String]
         pub fun addCreationCapability(minter: Capability<&FLOATEvents>) 
         pub fun claim(name: String, recipient: &Collection, secret: String?)
     }
 
     pub resource FLOATEvents: FLOATEventsPublic {
-        access(self) var events: {String: FLOATEvent}
+        access(self) var events: @{String: FLOATEvent}
         access(self) var otherHosts: {Address: Capability<&FLOATEvents>}
 
         // Create a new FLOAT Event.
-        pub fun createEvent(claimType: ClaimType, timelock: Timelock?, secret: Secret?, limited: Limited?, name: String, description: String, image: String, transferrable: Bool) {
+        pub fun createEvent(
+            claimType: ClaimType, 
+            timelock: Timelock?, 
+            secret: Secret?, 
+            limited: Limited?, 
+            name: String, 
+            description: String, 
+            image: String, 
+            transferrable: Bool
+        ) {
             pre {
                 self.events[name] == nil: 
                     "An event with this name already exists in your Collection."
             }
 
-            let FLOATEvent = FLOATEvent(
+            let FLOATEvent <- create FLOATEvent(
                 _claimType: claimType, 
                 _timelock: timelock,
                 _secret: secret,
@@ -288,12 +291,13 @@ pub contract FLOAT: NonFungibleToken {
                 _image: image, 
                 _transferrable: transferrable
             )
-            self.events[name] = FLOATEvent
+            self.events[name] <-! FLOATEvent
         }
 
         // Delete an event if you made a mistake.
         pub fun deleteEvent(name: String) {
-            self.events.remove(key: name)
+            let event <- self.events.remove(key: name)
+            destroy event
         }
 
         // A method for receiving a &FLOATEvent Capability. This is if 
@@ -309,25 +313,14 @@ pub contract FLOAT: NonFungibleToken {
             return self.otherHosts[host]!
         }
 
-        // Get a Host view (reference) of the FLOATEvent.
-        // 
-        // You can use this ref right now to toggleActive
-        pub fun getEventRef(name: String): &FLOATEvent  {
+        // Get a view of the FLOATEvent.
+        pub fun getEvent(name: String): &FLOATEvent {
             return &self.events[name] as &FLOATEvent
         }
 
-        // Get a public view of the FLOATEvent.
-        pub fun getEvent(name: String): FLOATEvent {
-            return self.events[name] ?? panic("This event does not exist in this Collection.")
-        }
-
-        pub fun getEventNames(): [String] {
+        // Return all the FLOATEvents.
+        pub fun getAllEvents(): [String] {
             return self.events.keys
-        }
-
-        // Return all the FLOATEvents you have ever created.
-        pub fun getAllEvents(): {String: FLOATEvent} {
-            return self.events
         }
 
         /*************************************** CLAIMING ***************************************/
@@ -338,10 +331,10 @@ pub contract FLOAT: NonFungibleToken {
             pre {
                 self.events[name] != nil:
                     "This event does not exist."
-                self.events[name]!.claimType == ClaimType.NotClaimable:
+                self.getEvent(name: name).claimType == ClaimType.NotClaimable:
                     "This event is Claimable."
             }
-            let FLOATEvent = self.getEventRef(name: name)
+            let FLOATEvent = self.getEvent(name: name)
             FLOATEvent.mint(recipient: recipient)
         }
 
@@ -353,26 +346,10 @@ pub contract FLOAT: NonFungibleToken {
             pre {
                 self.getEvent(name: name).active: 
                     "This FLOATEvent is not active."
-                self.events[name]!.claimType == ClaimType.Claimable:
+                self.getEvent(name: name).claimType == ClaimType.Claimable:
                     "This event is NotClaimable."
             }
-            let FLOATEvent: &FLOATEvent = self.getEventRef(name: name)
-            let recipientAddr: Address = recipient.owner!.address
-
-            // If the FLOATEvent has the `Secret` Prop
-            if FLOATEvent.Secret != nil {
-                let Secret: &Secret = &FLOATEvent.Secret! as &Secret
-
-                if !Secret.claimable {
-                    assert(
-                        secret != nil, 
-                        message: "You must provide a secret phrase code to mark your FLOAT ahead of time."
-                    )
-                    Secret.accounts[recipientAddr] = secret
-                    return
-                }
-                Secret.verify(accountAddr: recipientAddr)
-            }
+            let FLOATEvent: &FLOATEvent = self.getEvent(name: name)
             
             // If the FLOATEvent has the `Timelock` Prop
             if FLOATEvent.Timelock != nil {
@@ -380,10 +357,16 @@ pub contract FLOAT: NonFungibleToken {
                 Timelock.verify()
             } 
 
+            // If the FLOATEvent has the `Secret` Prop
+            if FLOATEvent.Secret != nil {
+                let Secret: &Secret = &FLOATEvent.Secret! as &Secret
+                Secret.verify(secretPhrase: secret)
+            }
+
             // If the FLOATEvent has the `Limited` Prop
             if FLOATEvent.Limited != nil {
                 let Limited: &Limited = &FLOATEvent.Limited! as &Limited
-                Limited.verify(accountAddr: recipientAddr)
+                Limited.verify(accountAddr: recipient.owner!.address)
             }
 
             // You have passed all the props (which act as restrictions).
@@ -393,8 +376,12 @@ pub contract FLOAT: NonFungibleToken {
         /******************************************************************************/
 
         init() {
-            self.events = {}
+            self.events <- {}
             self.otherHosts = {}
+        }
+
+        destroy() {
+            destroy self.events
         }
     }
 
