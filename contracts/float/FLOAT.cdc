@@ -115,6 +115,7 @@ pub contract FLOAT: NonFungibleToken {
         pub let description: String 
         pub let image: String 
         pub let transferrable: Bool
+        pub let metadata: {String: String}
 
         pub let dateCreated: UFix64
         // Effectively the current serial number
@@ -171,23 +172,25 @@ pub contract FLOAT: NonFungibleToken {
             _host: Address, _name: String,
             _description: String, 
             _image: String, 
-            _transferrable: Bool
+            _transferrable: Bool,
+            _metadata: {String: String}
         ) {
-            self.claimType = _claimType
-            self.Timelock = _timelock
-            self.Secret = _secret
-            self.Limited = _limited
-
             self.host = _host
             self.name = _name
             self.description = _description
             self.image = _image
             self.transferrable = _transferrable
+            self.metadata = _metadata
 
             self.dateCreated = getCurrentBlock().timestamp
             self.totalSupply = 0
             self.claimed = {}
             self.active = true
+
+            self.claimType = _claimType
+            self.Timelock = _timelock
+            self.Secret = _secret
+            self.Limited = _limited
         }
     }
 
@@ -254,7 +257,6 @@ pub contract FLOAT: NonFungibleToken {
     }
  
     pub resource interface FLOATEventsPublic {
-        pub fun getEvent(name: String): &FLOATEvent
         pub fun getAllEvents(): [String]
         pub fun addCreationCapability(minter: Capability<&FLOATEvents>) 
         pub fun claim(name: String, recipient: &Collection, secret: String?)
@@ -273,7 +275,8 @@ pub contract FLOAT: NonFungibleToken {
             name: String, 
             description: String, 
             image: String, 
-            transferrable: Bool
+            transferrable: Bool,
+            _ metadata: {String: String}
         ) {
             pre {
                 self.events[name] == nil: 
@@ -289,7 +292,8 @@ pub contract FLOAT: NonFungibleToken {
                 _name: name, 
                 _description: description, 
                 _image: image, 
-                _transferrable: transferrable
+                _transferrable: transferrable,
+                _metadata: metadata
             )
             self.events[name] <-! FLOATEvent
         }
