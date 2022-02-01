@@ -1,6 +1,6 @@
 import FLOAT from "../FLOAT.cdc"
 
-transaction(name: String, host: Address, secret: String?) {
+transaction(id: UInt64, host: Address, secret: String?) {
  
   let FLOATEvents: &FLOAT.FLOATEvents{FLOAT.FLOATEventsPublic}
   let Collection: &FLOAT.Collection
@@ -14,7 +14,7 @@ transaction(name: String, host: Address, secret: String?) {
   }
 
   execute {
-    self.FLOATEvents.claim(name: name, recipient: self.Collection, secret: secret)
+    self.FLOATEvents.claim(id: id, recipient: self.Collection, secret: secret)
     log("Claimed the FLOAT.")
   }
 }

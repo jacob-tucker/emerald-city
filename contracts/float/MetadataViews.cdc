@@ -42,7 +42,7 @@ pub contract MetadataViews {
             self.name = _name
             self.eventID = _eventID
             self.description = _description
-            self.dateReceived = 0.0 // getCurrentBlock().timestamp
+            self.dateReceived = getCurrentBlock().timestamp
             self.image = _image
             self.transferrable = _transferrable
         }

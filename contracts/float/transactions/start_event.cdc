@@ -1,6 +1,6 @@
 import FLOAT from "../FLOAT.cdc"
 
-transaction(type: UInt8, name: String, description: String, image: String, transferrable: Bool, timePeriod: UFix64?, secret: Bool, capacity: UInt64?,) {
+transaction(type: UInt8, name: String, description: String, image: String, transferrable: Bool, timePeriod: UFix64?, secret: String?, capacity: UInt64?) {
 
   let FLOATEvents: &FLOAT.FLOATEvents
 
@@ -18,15 +18,15 @@ transaction(type: UInt8, name: String, description: String, image: String, trans
       Timelock = FLOAT.Timelock(_timePeriod: timePeriod)
     }
     
-    if secret {
-      Secret = FLOAT.Secret()
+    if let secret = secret {
+      Secret = FLOAT.Secret(_secretPhrase: secret)
     }
 
     if let capacity = capacity {
       Limited = FLOAT.Limited(_capacity: capacity)
     }
     
-    self.FLOATEvents.createEvent(claimType: FLOAT.ClaimType(rawValue: type)!, timelock: Timelock, secret: Secret, limited: Limited, name: name, description: description, image: image, transferrable: transferrable)
+    self.FLOATEvents.createEvent(claimType: FLOAT.ClaimType(rawValue: type)!, timelock: Timelock, secret: Secret, limited: Limited, name: name, description: description, image: image, transferrable: transferrable, {})
     log("Started a new event.")
   }
 }
