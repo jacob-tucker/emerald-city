@@ -3,14 +3,11 @@ import NonFungibleToken from "../NonFungibleToken.cdc"
 
 pub contract FLOAT: NonFungibleToken {
 
-    pub enum ClaimOptions: UInt8 {
-        pub case Open
-        pub case Timelock
-        pub case Secret
-        pub case Limited
-        pub case Admin
+    pub enum ClaimType: UInt8 {
+        pub case Claimable
+        pub case NotClaimable
     }
-
+    
     // Paths
     //
     pub let FLOATCollectionStoragePath: StoragePath
@@ -26,13 +23,13 @@ pub contract FLOAT: NonFungibleToken {
     pub event Withdraw(id: UInt64, from: Address?)
     pub event Deposit(id: UInt64, to: Address?)
 
-    pub event FLOATMinted(recipient: Address, info: FLOATEventInfo)
-    pub event FLOATDeposited(to: Address, host: Address, name: String, id: UInt64)
-    pub event FLOATWithdrawn(from: Address, host: Address, name: String, id: UInt64)
+    pub event FLOATMinted(id: UInt64, metadata: MetadataViews.FLOATMetadataView)
+    pub event FLOATDeposited(to: Address, id: UInt64, metadata: MetadataViews.FLOATMetadataView)
+    pub event FLOATWithdrawn(from: Address, id: UInt64, metadata: MetadataViews.FLOATMetadataView)
 
     pub resource NFT: NonFungibleToken.INFT, MetadataViews.Resolver {
         pub let id: UInt64
-        pub let info: MetadataViews.FLOATMetadataView
+        pub let metadata: MetadataViews.FLOATMetadataView
 
         pub fun getViews(): [Type] {
              return [
@@ -45,34 +42,26 @@ pub contract FLOAT: NonFungibleToken {
         pub fun resolveView(_ view: Type): AnyStruct? {
             switch view {
                 case Type<MetadataViews.FLOATMetadataView>():
-                    return self.info
+                    return self.metadata
                 case Type<MetadataViews.Identifier>():
                     return MetadataViews.Identifier(id: self.id, address: self.owner!.address) 
                 case Type<MetadataViews.Display>():
                     return MetadataViews.Display(
-                                                 name: self.info.name, 
-                                                 description: self.info.description, 
-                                                 file: MetadataViews.IPFSFile(cid: self.info.image, path: nil)
+                                                 name: self.metadata.name, 
+                                                 description: self.metadata.description, 
+                                                 file: MetadataViews.IPFSFile(cid: self.metadata.image, path: nil)
                                                 )
             }
 
             return nil
         }
 
-        init(_recipient: Address, _info: FLOATEventInfo, _serial: UInt64) {
+        init(_metadata: MetadataViews.FLOATMetadataView) {
             self.id = self.uuid
-            self.info = MetadataViews.FLOATMetadataView(
-                                                        _recipient: _recipient, 
-                                                        _host: _info.host, 
-                                                        _name: _info.name, 
-                                                        _description: _info.description, 
-                                                        _image: _info.image,
-                                                        _serial: _serial,
-                                                        _transferrable: _info.transferrable
-                                                       )
+            self.metadata = _metadata
 
-            let dateReceived = 0.0 // getCurrentBlock().timestamp
-            emit FLOATMinted(recipient: _recipient, info: _info)
+            let dateReceived = getCurrentBlock().timestamp
+            emit FLOATMinted(id: self.id, metadata: self.metadata)
 
             FLOAT.totalSupply = FLOAT.totalSupply + 1
         }
@@ -83,7 +72,7 @@ pub contract FLOAT: NonFungibleToken {
 
         pub fun deposit(token: @NonFungibleToken.NFT) {
             let nft <- token as! @NFT
-            emit FLOATDeposited(to: nft.info.recipient, host: nft.info.host, name: nft.info.name, id: nft.uuid)
+            emit FLOATDeposited(to: self.owner!.address, id: nft.uuid, metadata: nft.metadata)
             self.ownedNFTs[nft.uuid] <-! nft
         }
 
@@ -91,8 +80,8 @@ pub contract FLOAT: NonFungibleToken {
             let token <- self.ownedNFTs.remove(key: withdrawID) ?? panic("You do not own this FLOAT in your collection")
             let nft <- token as! @NFT
             
-            assert(nft.info.transferrable, message: "This FLOAT is not transferrable")
-
+            assert(nft.metadata.transferrable, message: "This FLOAT is not transferrable.")
+            emit FLOATWithdrawn(from: self.owner!.address, id: nft.uuid, metadata: nft.metadata)
             return <- nft
         }
 
@@ -119,169 +108,196 @@ pub contract FLOAT: NonFungibleToken {
         }
     }
 
-    pub struct interface FLOATEvent {
-        pub let type: ClaimOptions
-        pub let info: FLOATEventInfo
-    }
-
-    pub struct FLOATEventInfo {
+    pub resource FLOATEvent {
+        // Info that will be present in the NFT
         pub let host: Address
         pub let name: String
         pub let description: String 
         pub let image: String 
-        pub let dateCreated: UFix64
         pub let transferrable: Bool
 
+        pub let dateCreated: UFix64
         // Effectively the current serial number
-        pub(set) var totalSupply: UInt64
+        pub var totalSupply: UInt64
         // Maps a user's address to its serial number
-        pub(set) var claimed: {Address: UInt64}
+        access(account) var claimed: {Address: UInt64}
         // A manual switch for the host to be able to turn off
-        pub(set) var active: Bool
-        init(_host: Address, _name: String, _description: String, _image: String, _transferrable: Bool) {
+        pub var active: Bool
+
+        pub let claimType: ClaimType
+        pub let Timelock: Timelock?
+        pub let Secret: Secret?
+        pub let Limited: Limited?
+
+        pub fun toggleActive(): Bool {
+            self.active = !self.active
+            return self.active
+        }
+  
+        pub fun getClaimed(): {Address: UInt64} {
+            return self.claimed
+        }
+
+        // Helper function to mint FLOATs.
+        access(account) fun mint(recipient: &Collection{NonFungibleToken.CollectionPublic}) {
+            pre {
+                self.claimed[recipient.owner!.address] == nil:
+                    "This person already claimed their FLOAT!"
+            }
+            let serial: UInt64 = self.totalSupply
+            let recipientAddr: Address = recipient.owner!.address
+
+            let metadata = MetadataViews.FLOATMetadataView(
+                                            _recipient: recipientAddr, 
+                                            _serial: serial,
+                                            _host: self.host, 
+                                            _name: self.name, 
+                                            _description: self.description, 
+                                            _image: self.image,
+                                            _transferrable: self.transferrable
+                                        )
+            let token <- create NFT(_metadata: metadata) 
+            recipient.deposit(token: <- token)
+
+            self.claimed[recipientAddr] = serial
+            self.totalSupply = serial + 1
+        }
+
+        init (
+            _claimType: ClaimType, 
+            _timelock: Timelock?,
+            _secret: Secret?,
+            _limited: Limited?,
+            _host: Address, _name: String,
+            _description: String, 
+            _image: String, 
+            _transferrable: Bool
+        ) {
+            self.claimType = _claimType
+            self.Timelock = _timelock
+            self.Secret = _secret
+            self.Limited = _limited
+
             self.host = _host
             self.name = _name
             self.description = _description
             self.image = _image
-            self.dateCreated = 0.0 // getCurrentBlock().timestamp
+            self.transferrable = _transferrable
+
+            self.dateCreated = getCurrentBlock().timestamp
             self.totalSupply = 0
             self.claimed = {}
             self.active = true
-            self.transferrable = _transferrable
         }
     }
 
-    pub struct Open: FLOATEvent {
-        pub let type: ClaimOptions
-        pub let info: FLOATEventInfo
-
-        init(_host: Address, _name: String, _description: String, _image: String, _transferrable: Bool) {
-            self.type = ClaimOptions.Open
-            self.info = FLOATEventInfo(_host: _host, _name: _name, _description: _description, _image: _image, _transferrable: _transferrable)
-        }
-    }
-
-    pub struct Timelock: FLOATEvent {
-        pub let type: ClaimOptions
-        pub let info: FLOATEventInfo
-        
+    pub struct Timelock {
         // An automatic switch handled by the contract
         // to stop people from claiming after a certain time.
-        pub let timePeriod: UFix64
+        pub let dateStart: UFix64
         pub let dateEnding: UFix64
 
-        init(_host: Address, _name: String, _description: String, _image: String, _timePeriod: UFix64, _transferrable: Bool) {
-            self.type = ClaimOptions.Timelock
-            self.info = FLOATEventInfo(_host: _host, _name: _name, _description: _description, _image: _image, _transferrable: _transferrable)
-            
-            self.timePeriod = _timePeriod
-            self.dateEnding = self.info.dateCreated + _timePeriod
+        access(account) fun verify() {
+            assert(
+                    getCurrentBlock().timestamp < self.dateEnding,
+                    message: "Sorry! The time has run out to mint this Timelock FLOAT."
+            )
+        }
+
+        init(_timePeriod: UFix64) {
+            self.dateStart = getCurrentBlock().timestamp
+            self.dateEnding = getCurrentBlock().timestamp + _timePeriod
         }
     }
 
-    // If the secretPhrase == "", this is set to active.
-    // Otherwise, the secretPhrase has been inputted and this is
-    // no longer active.
-    pub struct Secret: FLOATEvent {
-        pub let type: ClaimOptions
-        pub let info: FLOATEventInfo
-        
-        // A list of accounts to see who has put in a code.
-        // Maps their address to the code they put in.
-        pub(set) var accounts: {Address: String}
+    pub struct Secret {
         // The secret code, set by the owner of this event.
-        pub(set) var secretPhrase: String
+        access(account) var secretPhrase: String
 
-        init(_host: Address, _name: String, _description: String, _image: String, _transferrable: Bool) {
-            self.type = ClaimOptions.Secret
-            self.info = FLOATEventInfo(_host: _host, _name: _name, _description: _description, _image: _image, _transferrable: _transferrable)
+        access(account) fun verify(secretPhrase: String?) {
+            assert(
+                secretPhrase != nil,
+                message: "You must input a secret phrase."
+            )
+            assert(
+                self.secretPhrase == secretPhrase, 
+                message: "You did not input the correct secret phrase."
+            )
+        }
 
-            self.accounts = {}
-            self.secretPhrase = ""
+        init(_secretPhrase: String) {
+            self.secretPhrase = _secretPhrase
         }
     }
 
     // If the maximum capacity is reached, this is no longer active.
-    pub struct Limited: FLOATEvent {
-        pub let type: ClaimOptions
-        pub let info: FLOATEventInfo
-        
+    pub struct Limited {
         // A list of accounts to get track on who is here first
         // Maps the position of who come first to their address.
-        pub(set) var accounts: {UInt64: Address}
-        pub let capacity: UInt64
+        access(account) var accounts: {UInt64: Address}
+        pub var capacity: UInt64
 
-        init(_host: Address, _name: String, _description: String, _image: String, _capacity: UInt64, _transferrable: Bool) {
-            self.type = ClaimOptions.Secret
-            self.info = FLOATEventInfo(_host: _host, _name: _name, _description: _description, _image: _image, _transferrable: _transferrable)
+        access(account) fun verify(accountAddr: Address) {
+            let currentCapacity = UInt64(self.accounts.length)
+            assert(
+                currentCapacity < self.capacity,
+                message: "This FLOAT Event is at capacity."
+            )
+            
+            self.accounts[currentCapacity + 1] = accountAddr
+        }
 
+        init(_capacity: UInt64) {
             self.accounts = {}
             self.capacity = _capacity
         }
     }
-
-    // For an Admin to distribute directly to whomever.
-    pub struct Admin: FLOATEvent {
-        pub let type: ClaimOptions
-        pub let info: FLOATEventInfo
-
-        init(_host: Address, _name: String, _description: String, _image: String, _transferrable: Bool) {
-            self.type = ClaimOptions.Admin
-            self.info = FLOATEventInfo(_host: _host, _name: _name, _description: _description, _image: _image, _transferrable: _transferrable)
-        }
-    }
-
+ 
     pub resource interface FLOATEventsPublic {
-        pub fun getEvent(name: String): {FLOATEvent}
-        pub fun getAllEvents(): {String: {FLOATEvent}}
+        pub fun getEvent(name: String): &FLOATEvent
+        pub fun getAllEvents(): [String]
         pub fun addCreationCapability(minter: Capability<&FLOATEvents>) 
         pub fun claim(name: String, recipient: &Collection, secret: String?)
     }
 
     pub resource FLOATEvents: FLOATEventsPublic {
-        access(self) var events: {String: {FLOATEvent}}
+        access(self) var events: @{String: FLOATEvent}
         access(self) var otherHosts: {Address: Capability<&FLOATEvents>}
 
         // Create a new FLOAT Event.
-        pub fun createEvent(type: ClaimOptions, name: String, description: String, image: String, timePeriod: UFix64?, capacity: UInt64?, transferrable: Bool) {
+        pub fun createEvent(
+            claimType: ClaimType, 
+            timelock: Timelock?, 
+            secret: Secret?, 
+            limited: Limited?, 
+            name: String, 
+            description: String, 
+            image: String, 
+            transferrable: Bool
+        ) {
             pre {
                 self.events[name] == nil: 
                     "An event with this name already exists in your Collection."
-                type != ClaimOptions.Timelock || timePeriod != nil: 
-                    "If you use Timelock as the event type, you must provide a timePeriod."
-                type != ClaimOptions.Limited || capacity != nil:
-                    "If you use Limited as the event type, you must provide a capacity."
             }
 
-            if type == ClaimOptions.Open {
-                self.events[name] = Open(_host: self.owner!.address, _name: name, _description: description, _image: image, _transferrable: transferrable)
-            } else if type == ClaimOptions.Timelock {
-                self.events[name] = Timelock(_host: self.owner!.address, _name: name, _description: description, _image: image, _timePeriod: timePeriod!, _transferrable: transferrable)
-            } else if type == ClaimOptions.Secret {
-                self.events[name] = Secret(_host: self.owner!.address, _name: name, _description: description, _image: image, _transferrable: transferrable)
-            } else if type == ClaimOptions.Limited {
-                self.events[name] = Limited(_host: self.owner!.address, _name: name, _description: description, _image: image, _capacity: capacity!, _transferrable: transferrable)
-            } else if type == ClaimOptions.Admin {
-                self.events[name] = Admin(_host: self.owner!.address, _name: name, _description: description, _image: image, _transferrable: transferrable)
-            }
-        }
-
-        // Toggles the event true/false and returns
-        // the new state of it.
-        // 
-        // If an event is not active, you can never claim from it.
-        pub fun toggleEventActive(name: String): Bool {
-            pre {
-                self.events[name] != nil: "This event does not exist in your Collection."
-            }
-            let eventRef = &self.events[name] as &{FLOATEvent}
-            eventRef.info.active = !eventRef.info.active
-            return eventRef.info.active
+            let FLOATEvent <- create FLOATEvent(
+                _claimType: claimType, 
+                _timelock: timelock,
+                _secret: secret,
+                _limited: limited,
+                _host: self.owner!.address, 
+                _name: name, 
+                _description: description, 
+                _image: image, 
+                _transferrable: transferrable
+            )
+            self.events[name] <-! FLOATEvent
         }
 
         // Delete an event if you made a mistake.
         pub fun deleteEvent(name: String) {
-            self.events.remove(key: name)
+            let event <- self.events.remove(key: name)
+            destroy event
         }
 
         // A method for receiving a &FLOATEvent Capability. This is if 
@@ -297,104 +313,75 @@ pub contract FLOAT: NonFungibleToken {
             return self.otherHosts[host]!
         }
 
-        // Get a {FLOATEvent} struct. The returned value is a copy.
-        pub fun getEvent(name: String): {FLOATEvent} {
-            return self.events[name] ?? panic("This event does not exist in this Collection.")
+        // Get a view of the FLOATEvent.
+        pub fun getEvent(name: String): &FLOATEvent {
+            return &self.events[name] as &FLOATEvent
         }
 
-        // If you have a `Secret` FLOATEvent and want to add the secretPhrase to it.
-        // Once you do this, users will be able to claim their FLOAT if they had
-        // previously typed in the same phrase you provided here.
-        pub fun addSecretToEvent(name: String, secretPhrase: String) {
-            let ref = &self.events[name] as auth &{FLOATEvent}
-            let secret = ref as! &Secret
-            secret.secretPhrase = secretPhrase
-        }
-
-        // Return all the FLOATEvents you have ever created.
-        pub fun getAllEvents(): {String: {FLOATEvent}} {
-            return self.events
+        // Return all the FLOATEvents.
+        pub fun getAllEvents(): [String] {
+            return self.events.keys
         }
 
         /*************************************** CLAIMING ***************************************/
 
-        // Helper function for the 2 functions below.
-        access(self) fun getEventRef(name: String): auth &{FLOATEvent} {
-            return &self.events[name] as auth &{FLOATEvent}
-        }
-
-        // This is for claiming `Admin` FLOAT Events.
-        //
-        // For giving out FLOATs when the FLOAT Event is `Admin` type.
+        // This is for distributing NotClaimable FLOAT Events.
+        // NOT available to the public.
         pub fun distributeDirectly(name: String, recipient: &Collection{NonFungibleToken.CollectionPublic} ) {
             pre {
                 self.events[name] != nil:
                     "This event does not exist."
-                self.events[name]!.type == ClaimOptions.Admin:
-                    "This event is not an Admin type."
+                self.getEvent(name: name).claimType == ClaimType.NotClaimable:
+                    "This event is Claimable."
             }
-            let FLOATEvent = self.getEventRef(name: name)
-            FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
+            let FLOATEvent = self.getEvent(name: name)
+            FLOATEvent.mint(recipient: recipient)
         }
 
-        // This is for claiming `Open`, `Timelock`, `Secret`, or `Limited` FLOAT Events.
+        // This is for claiming Claimable FLOAT Events.
         //
         // The `secret` parameter is only necessary if you're claiming a `Secret` FLOAT.
-        pub fun claim(name: String, recipient: &Collection, secret: String?,) {
+        // Available to the public.
+        pub fun claim(name: String, recipient: &Collection, secret: String?) {
             pre {
-                self.getEvent(name: name).info.active: 
+                self.getEvent(name: name).active: 
                     "This FLOATEvent is not active."
+                self.getEvent(name: name).claimType == ClaimType.Claimable:
+                    "This event is NotClaimable."
             }
-            let FLOATEvent: auth &{FLOATEvent} = self.getEventRef(name: name)
+            let FLOATEvent: &FLOATEvent = self.getEvent(name: name)
             
-            // For `Open` FLOATEvents
-            if FLOATEvent.type == ClaimOptions.Open {
-                FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
-                return
-            }
-            
-            // For `Timelock` FLOATEvents
-            if FLOATEvent.type == ClaimOptions.Timelock {
-                let Timelock: &Timelock = FLOATEvent as! &Timelock
-                if Timelock.dateEnding <= getCurrentBlock().timestamp {
-                    panic("Sorry! The time has run out to mint this Timelock FLOAT.")
-                }
-                FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
-                return
+            // If the FLOATEvent has the `Timelock` Prop
+            if FLOATEvent.Timelock != nil {
+                let Timelock: &Timelock = &FLOATEvent.Timelock! as &Timelock
+                Timelock.verify()
             } 
-            
-            // For `Secret` FLOATEvents
-            if FLOATEvent.type == ClaimOptions.Secret {
-                let Secret: &Secret = FLOATEvent as! &Secret
-                if Secret.secretPhrase == "" && secret == nil {
-                    panic("You must provide a secret phrase code to claim your FLOAT ahead of time.")
-                }
 
-                if Secret.secretPhrase == "" {
-                    Secret.accounts[recipient.owner!.address] = secret
-                } else if Secret.accounts[recipient.owner!.address] == Secret.secretPhrase {
-                    FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
-                }
-                return
+            // If the FLOATEvent has the `Secret` Prop
+            if FLOATEvent.Secret != nil {
+                let Secret: &Secret = &FLOATEvent.Secret! as &Secret
+                Secret.verify(secretPhrase: secret)
             }
 
-            // For `Limited` FLOATEvents
-            if FLOATEvent.type == ClaimOptions.Limited {
-                let Limited: &Limited = FLOATEvent as! &Limited
-                let currentCapacity = UInt64(Limited.accounts.length)
-                if currentCapacity < Limited.capacity {
-                    Limited.accounts[currentCapacity + 1] = recipient.owner!.address
-                    FLOAT.mint(recipient: recipient, FLOATEvent: FLOATEvent)
-                }
-                return
+            // If the FLOATEvent has the `Limited` Prop
+            if FLOATEvent.Limited != nil {
+                let Limited: &Limited = &FLOATEvent.Limited! as &Limited
+                Limited.verify(accountAddr: recipient.owner!.address)
             }
+
+            // You have passed all the props (which act as restrictions).
+            FLOATEvent.mint(recipient: recipient)
         }
 
         /******************************************************************************/
 
         init() {
-            self.events = {}
+            self.events <- {}
             self.otherHosts = {}
+        }
+
+        destroy() {
+            destroy self.events
         }
     }
 
@@ -404,19 +391,6 @@ pub contract FLOAT: NonFungibleToken {
 
     pub fun createEmptyFLOATEventCollection(): @FLOATEvents {
         return <- create FLOATEvents()
-    }
-
-    // Helper function to mint FLOATs.
-    access(account) fun mint(recipient: &Collection{NonFungibleToken.CollectionPublic}, FLOATEvent: &{FLOATEvent}) {
-        pre {
-            FLOATEvent.info.claimed[recipient.owner!.address] == nil:
-                "This person already claimed their FLOAT!"
-        }
-        let serial: UInt64 = FLOATEvent.info.totalSupply
-        let token <- create NFT(_recipient: recipient.owner!.address, _info: FLOATEvent.info, _serial: serial) 
-        recipient.deposit(token: <- token)
-        FLOATEvent.info.claimed[recipient.owner!.address] = serial
-        FLOATEvent.info.totalSupply = serial + 1
     }
 
     init() {
