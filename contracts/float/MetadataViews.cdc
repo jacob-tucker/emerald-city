@@ -25,17 +25,22 @@ pub contract MetadataViews {
         pub let host: Address
         // The name of the event this FLOAT came from.
         pub let name: String 
+        // The ID of the event this FLOAT is from.
+        pub let eventID: UInt64
         pub let description: String
         pub let dateReceived: UFix64
         pub let image: String
+        // The serial # of this FLOAT (incremented from 0
+        // per FLOATEvent)
         pub let serial: UInt64
         pub let transferrable: Bool
 
-        init(_recipient: Address,  _serial: UInt64, _host: Address, _name: String, _description: String, _image: String, _transferrable: Bool) {
+        init(_recipient: Address,  _serial: UInt64, _host: Address, _name: String, _eventID: UInt64, _description: String, _image: String, _transferrable: Bool) {
             self.recipient = _recipient
             self.serial = _serial
             self.host = _host
             self.name = _name
+            self.eventID = _eventID
             self.description = _description
             self.dateReceived = 0.0 // getCurrentBlock().timestamp
             self.image = _image
