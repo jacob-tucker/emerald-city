@@ -1,5 +1,4 @@
 import FLOAT from "../FLOAT.cdc"
-import MetadataViews from "../MetadataViews.cdc"
 import NonFungibleToken from "../../NonFungibleToken.cdc"
 
 pub fun main(account: Address): [UInt64] {

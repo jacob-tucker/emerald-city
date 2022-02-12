@@ -1,6 +1,6 @@
 import FLOAT from "../FLOAT.cdc"
 import NonFungibleToken from "../../NonFungibleToken.cdc"
-import MetadataViews from "../MetadataViews.cdc"
+import MetadataViews from "../../MetadataViews.cdc"
 
 transaction {
 
