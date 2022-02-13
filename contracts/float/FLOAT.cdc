@@ -221,7 +221,7 @@ pub contract FLOAT: NonFungibleToken {
         // A manual toggle the event host can turn
         // on and off to stop claiming
         pub var active: Bool
-        // Maps the originalRecipient to:
+        // Maps the serial of the float to:
         /*
         { 
             id: uuid of the float
@@ -237,7 +237,7 @@ pub contract FLOAT: NonFungibleToken {
             serial: serial of the float
             address: current holder
         } 
-        */
+        */ 
         access(account) var currentHolders: {UInt64: FLOATMetadataViews.Identifier}
         pub let dateCreated: UFix64
         pub let description: String 
