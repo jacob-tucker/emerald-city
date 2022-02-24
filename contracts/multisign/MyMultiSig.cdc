@@ -1,7 +1,7 @@
 import Crypto
-import FungibleToken from "../FungibleToken.cdc"
+import FungibleToken from "./contracts/core/FungibleToken.cdc"
 
-pub contract MyMultiSign {
+pub contract MyMultiSig {
 
     //
     // ------- Resource Interfaces ------- 
@@ -9,6 +9,14 @@ pub contract MyMultiSign {
 
     pub resource interface MultiSign {
         pub let multiSignManager: @Manager
+    }
+
+    //
+    // ------- Action Wrapper ------- 
+    //
+
+    pub struct interface Action {
+        pub fun execute(_ params: {String: AnyStruct})
     }
 
     //
@@ -20,6 +28,7 @@ pub contract MyMultiSign {
         pub var totalVerified: Int
         pub var accountsVerified: {Address: Bool}
         pub let intent: String
+        pub let action: {Action}
 
         // ZayVerifierv2 - verifySignature
         //
@@ -31,7 +40,8 @@ pub contract MyMultiSign {
         // acctAddress: the address of the account we're verifying
         // message: {blockId}{uuid of this resource}
         // keyIds: the keyIds that the acctAddress theoretically signed with
-        // signatures: the signature that was theoretically produced from the `acctAddress` signing `message` with `keyIds`
+        // signatures: the signature that was theoretically produced from the `acctAddress` signing `message` with `keyIds`.
+        // can be multiple because you can sign with multiple keys, thus creating multiple signatures.
         // signatureBlock: when the signature was produced
         //
         // Returns:
@@ -122,11 +132,15 @@ pub contract MyMultiSign {
             }
             let blockIdHexStr: String = String.encodeHex(blockIds)
           
-            // message: {blockId}{uuid of this resource}
+            // message: {uuid of this resource}{intent}{blockId}
+            let uuidString = self.uuid.toString()
+
+            // Matches the `uuid` of this resource
+            assert(uuidString == message.slice(from: 0, upTo: uuidString.length), message: "This signature is not for the current block id")
+            // Matches the `intent` of this resource
+            assert(self.intent == message.slice(from: uuidString.length, upTo: uuidString.length + self.intent.length))
             // Ensure that the message passed in is of the current block id...
-            assert(blockIdHexStr == message.slice(from: 0, upTo: blockIdHexStr.length), message: "You did not sign for this MultiSign")
-            // and also matches the `uuid` of this resource
-            assert(self.uuid.toString() == message.slice(from: blockIdHexStr.length, upTo: message.length), message: "This signature is not for the current block id")
+            assert(blockIdHexStr == message.slice(from: uuidString.length + self.intent.length, upTo: message.length), message: "You did not sign for this MultiSign")
 
             let signatureValid = keyList.verify(
                 signatureSet: signatureSet,
@@ -145,30 +159,45 @@ pub contract MyMultiSign {
             return self.totalVerified == self.accountsVerified.keys.length
         }
 
-        init(_signers: [Address], _intent: String) {
+        init(_signers: [Address], _intent: String, _action: {Action}) {
             self.totalVerified = 0
             self.accountsVerified = {}
             self.intent = _intent
+            self.action = _action
             
             for signer in _signers {
                 self.accountsVerified[signer] = false
             }
         }
     }
+
+    pub resource interface ManagerPublic {
+        pub fun borrowAction(actionUUID: UInt64): &MultiSignAction
+        pub fun getIDs(): [UInt64]
+        pub fun getIntent(actionUUID: UInt64): String
+    }
     
-    pub resource Manager {
-        pub let signers: [Address]
+    pub resource Manager: ManagerPublic {
+        pub let signers: {Address: Bool}
 
         // Maps the `uuid` of the MultiSignAction
         // to the resource itself
         access(self) var actions: @{UInt64: MultiSignAction}
 
-        pub fun createMultiSign(intent: String) {
-            let newAction <- create MultiSignAction(_signers: self.signers, _intent: intent)
+        pub fun createMultiSign(intent: String, action: {Action}) {
+            let newAction <- create MultiSignAction(_signers: self.signers.keys, _intent: intent, _action: action)
             self.actions[newAction.uuid] <-! newAction
         }
 
-        pub fun removeMultiSign(actionUUID: UInt64) {
+        pub fun addSigner(signer: Address) {
+            self.signers.insert(key: signer, true)
+        }
+
+        pub fun removeSigner(signer: Address) {
+            self.signers.remove(key: signer)
+        }
+
+        pub fun removeAction(actionUUID: UInt64) {
             let removedAction <- self.actions.remove(key: actionUUID) ?? panic("This action does not exist.")
             destroy removedAction
         }
@@ -188,6 +217,10 @@ pub contract MyMultiSign {
             return <- action
         }
 
+        pub fun borrowAction(actionUUID: UInt64): &MultiSignAction {
+            return &self.actions[actionUUID] as &MultiSignAction
+        }
+
         pub fun getIDs(): [UInt64] {
             return self.actions.keys
         }
@@ -197,9 +230,13 @@ pub contract MyMultiSign {
             return actionRef.intent
         }
 
-        init(_signers: [Address]) {
-            self.signers = _signers
+        init(_initialSigners: [Address]) {
+            self.signers = {}
             self.actions <- {}
+
+            for signer in _initialSigners {
+                self.signers.insert(key: signer, true)
+            }
         }
 
         destroy() {
@@ -212,6 +249,6 @@ pub contract MyMultiSign {
     //
         
     pub fun createMultiSigManager(signers: [Address]): @Manager {
-        return <- create Manager(_signers: signers)
+        return <- create Manager(_initialSigners: signers)
     }
 }

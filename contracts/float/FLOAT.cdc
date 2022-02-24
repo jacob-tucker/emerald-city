@@ -49,7 +49,7 @@ pub contract FLOAT: NonFungibleToken {
 
         // A capability that points to metadata about the FLOAT event
         // this FLOAT is from.
-        pub let eventCap: Capability<&FLOATEvents{FLOATEventsPublic, MetadataViews.ResolverCollection}>
+        pub let eventCap: Capability<&FLOATEvents{FLOATEventsContract, MetadataViews.ResolverCollection}>
         
         // Helper function to get the metadata of the event 
         // this FLOAT is from
@@ -108,7 +108,7 @@ pub contract FLOAT: NonFungibleToken {
             self.serial = _serial
 
             self.eventCap = getAccount(_eventHost)
-                            .getCapability<&FLOATEvents{FLOATEventsPublic, MetadataViews.ResolverCollection}>(FLOAT.FLOATEventsPublicPath)
+                            .getCapability<&FLOATEvents{FLOATEventsContract, MetadataViews.ResolverCollection}>(FLOAT.FLOATEventsPublicPath)
             
             emit FLOATMinted(
                 id: self.id, 
@@ -124,9 +124,9 @@ pub contract FLOAT: NonFungibleToken {
         // When destroyed, we make sure to update the FLOAT Event metadata
         // (specifically to remove this user as a current holder of this FLOAT)
         destroy() {
-            let floatEvents: &FLOATEvents{FLOATEventsPublic} = self.eventCap.borrow() 
+            let floatEvents: &FLOATEvents{FLOATEventsContract} = self.eventCap.borrow() 
                 ?? panic("This Event Collection this FLOAT came from has been deleted.")
-            let floatEvent: &FLOATEvent = floatEvents.getEvent(id: self.eventId)
+            let floatEvent: &FLOATEvent = floatEvents.getEventRef(id: self.eventId)
             floatEvent.accountDeletedFLOAT(serial: self.serial)
             emit FLOATDestroyed(
                 id: self.id, 
@@ -162,8 +162,8 @@ pub contract FLOAT: NonFungibleToken {
             let token <- self.ownedNFTs.remove(key: withdrawID) ?? panic("You do not own this FLOAT in your collection")
             let nft <- token as! @NFT
             
-            let floatEvents: &FLOATEvents{FLOATEventsPublic} = nft.eventCap.borrow() ?? panic("This Event Collection this FLOAT came from has been deleted.")
-            let floatEvent: &FLOATEvent = floatEvents.getEvent(id: nft.id)
+            let floatEvents: &FLOATEvents{FLOATEventsContract} = nft.eventCap.borrow() ?? panic("This Event Collection this FLOAT came from has been deleted.")
+            let floatEvent: &FLOATEvent = floatEvents.getEventRef(id: nft.id)
             floatEvent.transferred(id: nft.id, serial: nft.serial, to: recipient.owner!.address)
             assert(floatEvent.transferrable, message: "This FLOAT is not transferrable.")
             emit FLOATTransferred(id: nft.id, from: self.owner!.address, to: recipient.owner!.address, eventHost: nft.eventHost, eventId: nft.eventId, serial: nft.serial)
@@ -505,17 +505,21 @@ pub contract FLOAT: NonFungibleToken {
     //
     pub resource interface FLOATEventsPublic {
         pub fun getAllEvents(): {String: UInt64}
-        pub fun getOtherHosts(): [Address]
-        pub fun addCreationCapability(minter: Capability<&FLOATEvents>) 
+        pub fun getSharedMinters(): [Address]
+        pub fun addSharedMinter(minter: Capability<&FLOATEvents>) 
         pub fun claim(id: UInt64, recipient: &Collection, secret: String?)
-        access(account) fun getEvent(id: UInt64): &FLOATEvent
     }
 
-    pub resource FLOATEvents: FLOATEventsPublic, MetadataViews.ResolverCollection {
+    pub resource interface FLOATEventsContract {
+        access(account) fun revokeSelfAccessToSharedMinter(host: Address)
+        access(account) fun getEventRef(id: UInt64): &FLOATEvent
+    }
+
+    pub resource FLOATEvents: FLOATEventsPublic, FLOATEventsContract, MetadataViews.ResolverCollection {
         // Makes sure a name is only being used once for every account.
         access(account) var nameToId: {String: UInt64}
         access(account) var events: @{UInt64: FLOATEvent}
-        access(account) var otherHosts: {Address: Capability<&FLOATEvents>}
+        access(account) var sharedMinters: {Address: Capability<&FLOATEvents>}
 
         // Create a new FLOAT Event.
         pub fun createEvent(
@@ -551,45 +555,24 @@ pub contract FLOAT: NonFungibleToken {
         }
 
         // Delete an event if you made a mistake.
+        // You can only delete an event if 0 people
+        // are currently holding that FLOAT, as written in the
+        // destroy() function of the FLOATEvent resource.
         pub fun deleteEvent(id: UInt64) {
-            let name: String = self.getEvent(id: id).name
+            let name: String = self.getEventRef(id: id).name
 
             self.nameToId.remove(key: name)
             let event <- self.events.remove(key: id) ?? panic("This event does not exist")
             destroy event
         }
 
-        // A method for receiving a &FLOATEvent Capability. This is if 
-        // a different account wants you to be able to handle their FLOAT Events
-        // for them, so imagine if you're on a team of people and you all handle
-        // one account.
-        pub fun addCreationCapability(minter: Capability<&FLOATEvents>) {
-            self.otherHosts[minter.borrow()!.owner!.address] = minter
-        }
-
-        // Get the Capability to do stuff with this FLOATEvents resource.
-        pub fun getCreationCapability(host: Address): &FLOATEvents? {
-            let cap: Capability<&FLOATEvents> = self.otherHosts[host] 
-                        ?? panic("You don't have access to this account's FLOATEvents.")
-
-            if !cap.check() {
-                self.otherHosts.remove(key: host)
-            }
-
-            return cap.borrow()
-        }
-
-        pub fun getOtherHosts(): [Address] {
-            return self.otherHosts.keys
-        }
-
         // Get a view of the FLOATEvent.
-        pub fun getEvent(id: UInt64): &FLOATEvent {
+        pub fun getEventRef(id: UInt64): &FLOATEvent {
             return &self.events[id] as &FLOATEvent
         }
 
         pub fun borrowViewResolver(id: UInt64): &{MetadataViews.Resolver} {
-            let floatRef = self.getEvent(id: id)
+            let floatRef = self.getEventRef(id: id)
             return floatRef as &{MetadataViews.Resolver}
         }
 
@@ -602,6 +585,67 @@ pub contract FLOAT: NonFungibleToken {
             return self.nameToId
         }
 
+        /*************************************** SHARED MINTER ***************************************/
+
+        // A method for getting access to a shared minter. This is if 
+        // a different account wants you to be able to handle their FLOAT Events
+        // for them, so imagine if you're on a team of people and you all handle
+        // one account.
+        pub fun addSharedMinter(minter: Capability<&FLOATEvents>) {
+            self.sharedMinters[minter.borrow()!.owner!.address] = minter
+        }
+
+        // TWO USE CASES:
+        // 1. The owner of this FLOATEvents can remove their own
+        // access to others minter whenever they want. So if I
+        // just really don't like my team and don't want to mint
+        // for them anymore, I can remove myself.
+        //
+        // 2. Can be called by `revokeOthersAccessToMySharedMinter`
+        // to remove your minter from someone else's FLOATEvents
+        // resource. So this basically stops a team member
+        // from minting for you.
+        pub fun revokeSelfAccessToSharedMinter(host: Address) {
+            self.sharedMinters.remove(key: host)
+        }
+
+        // Used for #2 in the above use cases. Call this function
+        // to remove your minter from `otherHost`'s FLOATEvents
+        pub fun revokeOthersAccessToMySharedMinter(otherHost: Address) {
+            let otherHostEvents = getAccount(otherHost).getCapability(FLOAT.FLOATEventsPublicPath)
+                                    .borrow<&FLOATEvents{FLOATEventsContract}>()
+                                    ?? panic("Could not get the other host's public FLOATEvents.")
+            otherHostEvents.revokeSelfAccessToSharedMinter(host: self.owner!.address)
+        }
+
+        // Get a reference to do stuff with a shared minter.
+        // If for some reason the Capability was unlinked, it will
+        // automatically remove it.
+        pub fun getSharedMinterRef(host: Address): &FLOATEvents? {
+            let cap: Capability<&FLOATEvents> = self.sharedMinters[host] 
+                        ?? panic("You don't have access to this account's FLOATEvents.")
+
+            if !cap.check() {
+                self.revokeSelfAccessToSharedMinter(host: host)
+            }
+
+            return cap.borrow()
+        }
+
+        // Get a list of shared minters you have
+        // access to.
+        pub fun getSharedMinters(): [Address] {
+            let answer: [Address] = []
+            for otherHost in self.sharedMinters.keys {
+                if self.sharedMinters[otherHost]!.check() {
+                    answer.append(otherHost)
+                } else {
+                    self.revokeSelfAccessToSharedMinter(host: otherHost)
+                }
+            }
+            return answer
+        }
+
         /*************************************** CLAIMING ***************************************/
 
         // Allows the event host to distribute directly, regardless of whether or not
@@ -611,20 +655,19 @@ pub contract FLOAT: NonFungibleToken {
                 self.events[id] != nil:
                     "This event does not exist."
             }
-            let FLOATEvent = self.getEvent(id: id)
+            let FLOATEvent = self.getEventRef(id: id)
             FLOATEvent.mint(recipient: recipient)
         }
 
- 
         // For the public to claim FLOATs. Must be active to do so.
         // The `secret` parameter is only necessary if you're claiming a `Secret` FLOAT.
         // Available to the public.
         pub fun claim(id: UInt64, recipient: &Collection, secret: String?) {
             pre {
-                self.getEvent(id: id).active: 
+                self.getEventRef(id: id).active: 
                     "This FLOATEvent is not active."
             }
-            let FLOATEvent: &FLOATEvent = self.getEvent(id: id)
+            let FLOATEvent: &FLOATEvent = self.getEventRef(id: id)
             
             // If the FLOATEvent has the `Timelock` Prop
             if FLOATEvent.Timelock != nil {
@@ -662,7 +705,7 @@ pub contract FLOAT: NonFungibleToken {
         init() {
             self.nameToId = {}
             self.events <- {}
-            self.otherHosts = {}
+            self.sharedMinters = {}
         }
 
         destroy() {
